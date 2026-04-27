@@ -357,17 +357,14 @@ def get_level_0_summary(results):
                 return " ⏳ "
                 
             if status == 200:
-                # If it passed but the proxy said it shouldn't have supported it, note it but it's a pass
-                if expected is False:
-                    return " ✅*"
                 return " ✅ "
             elif status == 429:
                 return " ⏸️ "
             elif status in (400, 403, 404, 405):
                 # If the endpoint explicitly says it doesn't support this, 
-                # a 400 rejection is the *expected* behavior, so it's a structural pass (represented as an open circle).
+                # a 400 rejection is the *expected* behavior, so it's a structural pass (represented as a light grey/white circle).
                 if expected is False:
-                    return " ⭕️ "
+                    return " ⚪ "
                 return " ⚠️ "
             else:
                 return " ❌ "
@@ -397,16 +394,24 @@ def get_level_0_summary(results):
             
             # Extract ground-truth expected capabilities
             model_info = caps.get("_model_info", {})
-            supported_params = model_info.get("supported_openai_params", [])
+            supported_params = model_info.get("supported_openai_params", []) or []
             
-            exp_vision = model_info.get("supports_vision")
-            exp_tools = model_info.get("supports_function_calling")
-            if exp_tools is None and "tools" in supported_params:
+            exp_vision = model_info.get("supports_vision") is True
+            
+            exp_tools = model_info.get("supports_function_calling") is True
+            if not exp_tools and "tools" in supported_params:
                 exp_tools = True
-            exp_json = model_info.get("supports_response_schema")
-            if exp_json is None and "response_format" in supported_params:
+                
+            exp_json = model_info.get("supports_response_schema") is True
+            if not exp_json and "response_format" in supported_params:
                 exp_json = True
-            exp_stream = "stream" in supported_params if supported_params else None
+                
+            exp_stream = model_info.get("supports_native_streaming") is True
+            if not exp_stream and "stream" in supported_params:
+                exp_stream = True
+                
+            exp_embed = (model_info.get("mode") == "embedding")
+            exp_roundtrip = exp_tools
             
             if "text" in caps_tested: 
                 row_cols.append(f" {format_cap(caps.get('text'))} ")
@@ -415,9 +420,9 @@ def get_level_0_summary(results):
             if "vision" in caps_tested: 
                 row_cols.append(f"   {format_cap(caps.get('vision'), expected=exp_vision)}  ")
             if "roundtrip" in caps_tested: 
-                row_cols.append(f"    {format_cap(caps.get('roundtrip'))}     ")
+                row_cols.append(f"    {format_cap(caps.get('roundtrip'), expected=exp_roundtrip)}     ")
             if "embedding" in caps_tested: 
-                row_cols.append(f"   {format_cap(caps.get('embedding'))}    ")
+                row_cols.append(f"   {format_cap(caps.get('embedding'), expected=exp_embed)}    ")
             if "stream" in caps_tested: 
                 row_cols.append(f"   {format_cap(caps.get('stream'), expected=exp_stream)}   ")
             if "json_mode" in caps_tested: 

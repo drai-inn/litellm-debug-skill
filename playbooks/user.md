@@ -52,7 +52,7 @@ The User tier diagnostic tool groups endpoints into the following logical sets:
     *   `<capability>`: A comma-separated list (e.g., `text,roundtrip`) to isolate specific workloads. The resulting diagnostic matrix will dynamically adapt its columns to match.
 
     The script degrades gracefully: 
-    * If a model explicitly rejects a feature (e.g., 400 error) and `/model/info` confirms it is unsupported, it's recorded as a known limitation (`⭕️`).
+    * If a model explicitly rejects a feature (e.g., 400 error) and `/model/info` confirms it is unsupported, it's recorded as a known limitation (`⚪`).
     * If it rejects a feature unexpectedly, it's recorded as a warning (`⚠️`).
     * If it hits a rate limit (`429`), it's recorded as a pause (`⏸️`).
     * If the request times out, it's recorded as waiting (`⏳`).
@@ -74,7 +74,7 @@ The User tier diagnostic tool groups endpoints into the following logical sets:
 > ▶ INFERENCE READINESS
 >   Model                           | Text | Tools | Vision | Round-Trip | Embed | Stream | JSON Mode |
 >   --------------------------------+------+-------+--------+------------+-------+--------+-----------|
->   gpt-oss-20b                     |  ✅  |   ✅   |    ✅   |     ✅      |   ⭕️   |   ✅    |     ⭕️     |
->   gemini/gemini-flash-latest      |  ⏸️  |   ⏸️   |    ⭕️   |     ⏳      |   ⭕️   |   ⏸️    |     ⏸️     |
+>   gpt-oss-20b                     |  ✅  |   ✅   |    ✅   |     ✅      |   ⚪   |   ✅    |     ⚪     |
+>   gemini/gemini-flash-latest      |  ⏸️  |   ⏸️   |    ⚪   |     ⏳      |   ⚪   |   ⏸️    |     ⏸️     |
 >   
 > *To investigate a specific failing request, or to view the raw JSON payloads for these permissions, run this script with `--level 1` or `--level 2`.*
