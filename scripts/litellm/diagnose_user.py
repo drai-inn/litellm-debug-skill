@@ -410,24 +410,35 @@ def get_level_0_summary(results):
             status = res.get("status")
             text = res.get("text", "")
             err_msg = ""
+            err_type = ""
+            err_code = ""
             if res.get("error"): # Python-level error like connection timeout
                 err_msg = res.get("error")
             elif text:
                 try:
                     parsed = json.loads(text)
                     if "error" in parsed:
-                        if isinstance(parsed["error"], dict) and "message" in parsed["error"]:
-                            err_msg = parsed["error"]["message"]
+                        err_obj = parsed["error"]
+                        if isinstance(err_obj, dict):
+                            err_msg = err_obj.get("message", str(err_obj))
+                            err_type = err_obj.get("type", "")
+                            err_code = err_obj.get("code", "")
                         else:
-                            err_msg = str(parsed["error"])
+                            err_msg = str(err_obj)
                 except:
                     err_msg = text[:80].replace("\n", " ") + "..."
             
             if err_msg:
+                # format a richer error string
+                parts = []
+                if err_type: parts.append(f"Type: {err_type}")
+                if err_code: parts.append(f"Code: {err_code}")
+                prefix = f"[{', '.join(parts)}] " if parts else ""
+                full_err = f"{prefix}{err_msg}".replace("\n", " ")
+                
                 # truncate err_msg a bit for dashboard
-                err_msg = err_msg.replace("\n", " ")
-                err_msg = err_msg[:120] + ("..." if len(err_msg) > 120 else "")
-                error_log.append(f"    {symbol} {model} ({cap_name}): {status if status else 'Err'} - {err_msg}")
+                full_err = full_err[:150] + ("..." if len(full_err) > 150 else "")
+                error_log.append(f"    {symbol} {model} ({cap_name}): {status if status else 'Err'} - {full_err}")
         
         for test_model, caps in results["inference"].items():
             row_cols = []
