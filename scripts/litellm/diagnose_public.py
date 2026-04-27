@@ -201,7 +201,7 @@ def format_content(text, content_type, level=1):
     else:
         return text[:1000] + ("\n... [Text truncated]" if len(text) > 1000 else "")
 
-def get_level_1_diagnostics(results):
+def get_level_1_diagnostics(results, base_url):
     print("=== Level 1: Diagnostics ===\n")
     for name, data in results.items():
         print(f"Diagnostics for `{data['path']}`:")
@@ -212,9 +212,11 @@ def get_level_1_diagnostics(results):
         status = data['status']
         c_type = data['headers'].get('Content-Type', '')
         excerpt = format_content(data['text'], c_type, level=1)
+        url = f"{base_url.rstrip('/')}{data['path']}"
         
         print(f"  * Status: {status}")
-        print(f"  * Body Excerpt: {excerpt}\n")
+        print(f"  * Body Excerpt: {excerpt}")
+        print(f"  * Drill Down: Run with `--level 2` or `curl -s {url}`\n")
 
 def get_level_2_traces(results, base_url):
     print("=== Level 2: Traces ===\n")
@@ -237,8 +239,15 @@ def get_level_2_traces(results, base_url):
         body = format_content(data['text'], c_type, level=2)
         print(f"\n{body}")
         print("```\n")
-        print("Reproduction Command:")
-        print(f"curl -v -H \"Accept: application/json\" {base_url.rstrip('/')}{path}\n")
+        
+        url = f"{base_url.rstrip('/')}{path}"
+        print("Reproduction Commands:")
+        print(f"  Raw Trace:   curl -v {url}")
+        if "application/json" in c_type.lower():
+            print(f"  Pretty JSON: curl -s {url} | jq")
+        elif "text/html" in c_type.lower():
+            print(f"  Save HTML:   curl -s {url} -o output.html")
+        print()
 
 def main():
     parser = argparse.ArgumentParser(description="LiteLLM Public Tier Diagnostics")
@@ -256,7 +265,7 @@ def main():
         get_level_0_summary(results)
     if args.level >= 1:
         print("\n" + "="*50 + "\n")
-        get_level_1_diagnostics(results)
+        get_level_1_diagnostics(results, base_url)
     if args.level == 2:
         print("\n" + "="*50 + "\n")
         get_level_2_traces(results, base_url)
