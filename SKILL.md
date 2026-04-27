@@ -11,10 +11,8 @@ This project implements the [Agent Skills](https://agentskills.io/) open format.
 ## Read first
 
 In order:
-1. `dev/intent.md` — what this skill is and isn't.
-2. `dev/roadmap.md` — work plan with acceptance criteria.
-3. `dev/decisions.md` — architectural decision log; durable principles.
-4. `dev/practices.md` — normative development and tooling practices.
+1. `README.md` — what this skill is and isn't.
+2. `playbooks/` — step-by-step instructions for common investigative paths.
 
 ## Core principles
 
@@ -32,15 +30,28 @@ In order:
 ## Conventions
 
 - Tests are diagnostic. A missing credential should skip with a message naming the env var to set, not fail with a stack trace.
-- New decisions append to `dev/decisions.md` with a fresh ID and date.
 - Local source clones live outside the repo, at `~/.cache/litellm-debug/sources/litellm@<version>/`.
 - Comments only when the WHY is non-obvious.
-- No abstractions ahead of the second concrete need.
 
 ## Test running
 
-```
+Before running tests or diagnostic scripts, ensure your environment is set up:
+1. Create and activate a virtual environment.
+2. Install dependencies.
+3. Source your `.env` file (copied from `.env.example`).
+
+```bash
+# 1. Setup environment
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
+
+# 2. Configure credentials
+# cp .env.example .env - ensure you don't overwrite an existing .env that might already contain existing settings the user needs to preserve.
+# Edit .env to add required credentials (e.g., LITELLM_BASE_URL, LITELLM_USER_KEY)...
+set -a; source .env; set +a
+
+# 3. Run diagnostics
 pytest                              # all tiers; skip those without creds
 pytest tests/litellm/public -v      # Public tier only (just LITELLM_BASE_URL)
 pytest -m tier_admin                # by marker

@@ -1,6 +1,7 @@
 """Shared pytest fixtures and tier-marker auto-tagging."""
 import os
 import pytest
+import requests
 
 try:
     from dotenv import load_dotenv
