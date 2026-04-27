@@ -47,11 +47,17 @@ In order:
 
 ## Test running
 
-Test framework is currently in flight (see "In flight" in
-`dev/roadmap.md`). Once chosen, run from repo root; tests are
-organized by tier under `tests/litellm/<tier>/`. Markers:
-`tier_public`, `tier_user`, `tier_admin`, `tier_telemetry`,
-`tier_database`.
+```
+pip install -r requirements.txt
+pytest                              # all tiers; skip those without creds
+pytest tests/litellm/public -v      # Public tier only (just LITELLM_BASE_URL)
+pytest -m tier_admin                # by marker
+```
+
+Tier markers (`tier_public`, `tier_user`, `tier_admin`,
+`tier_telemetry`, `tier_database`) are auto-applied based on the
+test's path under `tests/litellm/<tier>/`; they do not need to be
+declared per file.
 
 ## What this skill is not
 

@@ -7,8 +7,13 @@ one more credential than the one below. New users start at Phase 3
 (Public — only needs a base URL) and add credentials as they go. Each
 tier ships with executable tests; passing the tests is the gate.
 
-**Current phase:** Phase 0 — design seed.
-**Next phase:** Phase 1 — spec capture.
+**Current phase:** Phase 3 — Public tier shipped alongside Phase 2 test
+harness, to give a working validation flow as early as possible.
+**Phase 1 (spec capture) is deferred** until after first end-user
+validation; Public-tier liveness/readiness/models/metrics tests do not
+depend on a pinned spec.
+**Next phase:** Phase 4 — User tier, OR loop back to Phase 1 once the
+Public-tier validation has been exercised against a real proxy.
 
 ## Phase 0 — Design seed
 

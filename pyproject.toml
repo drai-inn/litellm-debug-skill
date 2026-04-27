@@ -1,0 +1,9 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "tier_public: requires LITELLM_BASE_URL only",
+    "tier_user: requires LITELLM_USER_KEY",
+    "tier_admin: requires LITELLM_MASTER_KEY",
+    "tier_telemetry: requires telemetry backend creds (e.g. LANGFUSE_*)",
+    "tier_database: requires LITELLM_DB_DSN and LITELLM_DB_OPTIN=1",
+]
