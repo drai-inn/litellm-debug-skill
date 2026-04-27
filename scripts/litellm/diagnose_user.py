@@ -37,6 +37,70 @@ CATEGORIES = {
 
 ENDPOINTS = {name: path for cat in CATEGORIES.values() for name, path in cat.items()}
 
+def check_inference(base_url, user_key, results):
+    test_model = os.getenv("LITELLM_TEST_MODEL")
+    if not test_model:
+        # Fallback to first available model
+        models_data = results.get("models", {})
+        if models_data.get("status") == 200:
+            try:
+                parsed = json.loads(models_data["text"])
+                models = parsed.get("data", [])
+                if models:
+                    test_model = models[0].get("id")
+            except:
+                pass
+                
+    if not test_model:
+        return
+        
+    headers = {"Authorization": f"Bearer {user_key}", "Content-Type": "application/json"}
+    
+    payloads = {
+        "inference_text": {
+            "model": test_model,
+            "messages": [{"role": "user", "content": "Hello, this is a diagnostic test. Please reply with 'OK'."}],
+            "max_tokens": 10
+        },
+        "inference_tools": {
+            "model": test_model,
+            "messages": [{"role": "user", "content": "What is the weather in London?"}],
+            "tools": [{"type": "function", "function": {"name": "get_weather", "description": "Get current weather", "parameters": {"type": "object", "properties": {"location": {"type": "string"}}, "required": ["location"]}}}],
+            "tool_choice": "auto",
+            "max_tokens": 20
+        },
+        "inference_vision": {
+            "model": test_model,
+            "messages": [{"role": "user", "content": [{"type": "text", "text": "What is in this image?"}, {"type": "image_url", "image_url": {"url": "https://upload.wikimedia.org/wikipedia/commons/a/a7/React-icon.svg"}}]}],
+            "max_tokens": 10
+        }
+    }
+    
+    for name, payload in payloads.items():
+        try:
+            r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
+            results[name] = {
+                "status": r.status_code,
+                "headers": dict(r.headers),
+                "text": r.text,
+                "path": "/v1/chat/completions",
+                "method": "POST",
+                "payload": payload,
+                "error": None,
+                "model_tested": test_model
+            }
+        except Exception as e:
+            results[name] = {
+                "status": None,
+                "headers": {},
+                "text": "",
+                "path": "/v1/chat/completions",
+                "method": "POST",
+                "payload": payload,
+                "error": str(e),
+                "model_tested": test_model
+            }
+
 def check_endpoints(base_url, user_key):
     results = {}
     headers = {"Authorization": f"Bearer {user_key}"}
@@ -48,6 +112,7 @@ def check_endpoints(base_url, user_key):
                 "headers": dict(r.headers),
                 "text": r.text,
                 "path": path,
+                "method": "GET",
                 "error": None
             }
         except Exception as e:
@@ -56,8 +121,13 @@ def check_endpoints(base_url, user_key):
                 "headers": {},
                 "text": "",
                 "path": path,
+                "method": "GET",
                 "error": str(e)
             }
+            
+    # Check Inference Capabilities
+    check_inference(base_url, user_key, results)
+    
     return results
 
 def get_level_0_summary(results):
@@ -134,6 +204,28 @@ def get_level_0_summary(results):
     else:
          print(f"  ❓ Permitted:    Unexpected status {models.get('status')}")
 
+    # 3. Inference Readiness
+    print("\n▶ INFERENCE READINESS")
+    if "inference_text" not in results:
+        print("  ⚠️ Skipped:      No test model available.")
+    else:
+        test_model = results["inference_text"]["model_tested"]
+        print(f"  🎯 Target Model: `{test_model}`")
+        
+        # Helper to format capability status
+        def format_cap(key, label):
+            res = results.get(key, {})
+            if res.get("status") == 200:
+                return f"✅ {label:<7} (Pass)"
+            elif res.get("status") in (400, 403, 404):
+                return f"⚠️ {label:<7} (Rejected/Unsupported)"
+            else:
+                return f"❌ {label:<7} (Fail - {res.get('status')})"
+                
+        print(f"  {format_cap('inference_text', 'Text:')}")
+        print(f"  {format_cap('inference_tools', 'Tools:')}")
+        print(f"  {format_cap('inference_vision', 'Vision:')}")
+
     print("\n" + "─"*59)
     print("💡 Next Step: To view the raw JSON payloads containing your")
     print("   permissions and models, run with `--level 1` or `--level 2`.")
@@ -150,10 +242,16 @@ def get_level_1_diagnostics(results, base_url, user_key):
         c_type = data['headers'].get('Content-Type', '')
         excerpt = format_content(data['text'], c_type, level=1)
         url = f"{base_url.rstrip('/')}{data['path']}"
+        method = data.get('method', 'GET')
         
         print(f"  * Status: {status}")
         print(f"  * Body Excerpt: {excerpt}")
-        print(f"  * Drill Down: Run with `--level 2` or `curl -s -H \"Authorization: Bearer $LITELLM_USER_KEY\" {url}`\n")
+        
+        if method == "POST":
+            payload_str = json.dumps(data.get('payload', {}))
+            print(f"  * Drill Down: Run with `--level 2` or `curl -s -X POST -H \"Authorization: Bearer $LITELLM_USER_KEY\" -H \"Content-Type: application/json\" -d '{payload_str}' {url}`\n")
+        else:
+            print(f"  * Drill Down: Run with `--level 2` or `curl -s -H \"Authorization: Bearer $LITELLM_USER_KEY\" {url}`\n")
 
 def get_level_2_traces(results, base_url, user_key):
     print("=== Level 2: Traces ===\n")
@@ -165,10 +263,17 @@ def get_level_2_traces(results, base_url, user_key):
         status = data['status']
         headers = data['headers']
         c_type = headers.get('Content-Type', '')
+        method = data.get('method', 'GET')
+        payload = data.get('payload', {})
         
-        print(f"Full Trace for `{path}`:")
-        print(f"```http\n> GET {path} HTTP/1.1\n> Host: {base_url.replace('https://', '').replace('http://', '').rstrip('/')}")
-        print(f"> Authorization: Bearer {user_key[:8]}...[REDACTED]\n> Accept: */*\n")
+        print(f"Full Trace for `{name}` ({path}):")
+        print(f"```http\n> {method} {path} HTTP/1.1\n> Host: {base_url.replace('https://', '').replace('http://', '').rstrip('/')}")
+        print(f"> Authorization: Bearer {user_key[:8]}...[REDACTED]\n> Accept: */*")
+        
+        if method == "POST":
+            print("> Content-Type: application/json")
+            print(f"\n{json.dumps(payload, indent=2)}\n")
+            
         print(f"< HTTP/1.1 {status}")
         for k, v in headers.items():
             if k.lower() in ["content-type", "content-length", "date"]:
@@ -180,9 +285,15 @@ def get_level_2_traces(results, base_url, user_key):
         
         url = f"{base_url.rstrip('/')}{path}"
         print("Reproduction Commands:")
-        print(f"  Raw Trace:   curl -v -H \"Authorization: Bearer $LITELLM_USER_KEY\" {url}")
-        if "application/json" in c_type.lower():
-            print(f"  Pretty JSON: curl -s -H \"Authorization: Bearer $LITELLM_USER_KEY\" {url} | jq")
+        if method == "POST":
+            payload_str = json.dumps(payload)
+            print(f"  Raw Trace:   curl -v -X POST -H \"Authorization: Bearer $LITELLM_USER_KEY\" -H \"Content-Type: application/json\" -d '{payload_str}' {url}")
+            if "application/json" in c_type.lower():
+                print(f"  Pretty JSON: curl -s -X POST -H \"Authorization: Bearer $LITELLM_USER_KEY\" -H \"Content-Type: application/json\" -d '{payload_str}' {url} | jq")
+        else:
+            print(f"  Raw Trace:   curl -v -H \"Authorization: Bearer $LITELLM_USER_KEY\" {url}")
+            if "application/json" in c_type.lower():
+                print(f"  Pretty JSON: curl -s -H \"Authorization: Bearer $LITELLM_USER_KEY\" {url} | jq")
         print()
 
 def main():

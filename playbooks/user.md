@@ -32,10 +32,14 @@ The User tier diagnostic tool groups endpoints into the following logical sets:
     *   Total number of models accessible by *this* key.
     *   (Optional drill down: checking if a specific model the user is failing on is actually in this list).
 
-### 3. Inference Readiness
-*Goal: Verify if the proxy will actually accept a completion request from this key.*
-*   **Endpoints:** `/v1/chat/completions` (Optional/dry-run)
-*   *(Note: Actually hitting downstream LLMs costs money. The test suite may just do a dry-run or rely on `/v1/models` as proof of access, unless the user provides a specific `TEST_MODEL` environment variable).*
+### 3. Inference Readiness (The "Full Surface")
+*Goal: Verify if the proxy will successfully negotiate complex generative requests on behalf of this key.*
+*   **Endpoint:** `/v1/chat/completions`
+*   **Strategy:** Hitting the proxy with "Hello World" is insufficient for debugging agentic AI workloads. Modern agents use complex modalities. We must test the *fuller surface* of inference capabilities:
+    1.  **Standard Text:** A simple `user` message to verify basic connectivity, routing, and budget enforcement.
+    2.  **Tool Calling / Functions:** Submitting a payload with `tools` defined and forcing a `tool_choice` to ensure the proxy's parsers (and the upstream provider) properly handle structured schema requests without throwing 400 Bad Request errors.
+    3.  **Vision / Media:** Submitting a multi-modal payload containing an `image_url` to verify the proxy correctly proxies or translates rich media requests for the given provider.
+*   **Model Selection:** Inference costs money and requires specific upstream capabilities. The diagnostic tool will attempt to use `LITELLM_TEST_MODEL` from the `.env` file. If unset, it will pick the first model returned by `/v1/models` and attempt a basic text completion, but will gracefully skip Vision/Tools if the model rejects them.
 
 ## Example Output (Level 0)
 

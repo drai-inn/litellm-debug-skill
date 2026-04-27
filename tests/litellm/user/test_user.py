@@ -55,3 +55,76 @@ def test_models_list_with_key(base_url, user_key):
         f"Body: {r.text[:200]}"
     )
     assert "data" in r.json(), "Expected 'data' key in /v1/models response"
+
+def test_inference_text(base_url, user_key, test_model):
+    """Test standard text completion to ensure basic routing and budget work."""
+    headers = {"Authorization": f"Bearer {user_key}", "Content-Type": "application/json"}
+    payload = {
+        "model": test_model,
+        "messages": [{"role": "user", "content": "Hello, this is a diagnostic test. Please reply with 'OK'."}],
+        "max_tokens": 10
+    }
+    r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
+    
+    if r.status_code == 404:
+        pytest.skip(f"Model {test_model} not found or not mapped correctly (got 404).")
+    if r.status_code == 403:
+         pytest.skip(f"Key does not have budget or permission for {test_model} (got 403).")
+
+    assert r.status_code == 200, f"Expected 200 from text completion, got {r.status_code}. Body: {r.text[:200]}"
+    assert "choices" in r.json(), "Expected 'choices' in response"
+
+def test_inference_tools(base_url, user_key, test_model):
+    """Test tool-calling capability to ensure schema validation proxies correctly."""
+    headers = {"Authorization": f"Bearer {user_key}", "Content-Type": "application/json"}
+    payload = {
+        "model": test_model,
+        "messages": [{"role": "user", "content": "What is the weather in London?"}],
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "description": "Get current weather in a location",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "location": {"type": "string", "description": "City name"}
+                        },
+                        "required": ["location"]
+                    }
+                }
+            }
+        ],
+        "tool_choice": "auto",
+        "max_tokens": 20
+    }
+    r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
+    
+    if r.status_code in (400, 404, 403):
+        pytest.skip(f"Model {test_model} rejected tool calling or is unavailable (got {r.status_code}).")
+
+    assert r.status_code == 200, f"Expected 200 from tool completion, got {r.status_code}. Body: {r.text[:200]}"
+
+def test_inference_vision(base_url, user_key, test_model):
+    """Test vision capability to ensure multimedia payloads proxy correctly."""
+    headers = {"Authorization": f"Bearer {user_key}", "Content-Type": "application/json"}
+    payload = {
+        "model": test_model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "What is in this image?"},
+                    {"type": "image_url", "image_url": {"url": "https://upload.wikimedia.org/wikipedia/commons/a/a7/React-icon.svg"}}
+                ]
+            }
+        ],
+        "max_tokens": 10
+    }
+    r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
+    
+    if r.status_code in (400, 404, 403):
+        pytest.skip(f"Model {test_model} rejected vision payload or is unavailable (got {r.status_code}).")
+
+    assert r.status_code == 200, f"Expected 200 from vision completion, got {r.status_code}. Body: {r.text[:200]}"

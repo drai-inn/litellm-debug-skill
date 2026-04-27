@@ -169,3 +169,18 @@ When surfacing diagnostics (Level 1) or traces (Level 2), the skill parses the H
 - Adding a heavy dependency like `BeautifulSoup` — rejected. We can achieve 90% of the value using basic regex extraction for HTML `<title>` tags without bloating `requirements.txt`.
 - Leaving it up to the user to format — rejected. The skill should "do the work" of presenting readable diagnostics.
 
+---
+
+## D009 — Inference Readiness testing via explicit capability dimensions
+
+**Date:** 2026-04-27
+
+When testing inference readiness in the User Tier (`/v1/chat/completions`), the skill does not just send a single "Hello World" prompt. It categorizes inference into distinct capability dimensions: **Text**, **Tools (Function Calling)**, and **Vision (Media)**, and tests them sequentially.
+
+**Why:** A proxy might successfully route a basic text prompt but fail on a tool-calling payload due to provider-specific schema translation issues (e.g., Anthropic vs. OpenAI tool formats) or fail on a vision payload due to payload size limits or parsing bugs. Debugging an agentic workload requires proving the proxy handles complex modalities correctly.
+
+**Execution:** 
+- The user can explicitly specify the model to test via `LITELLM_TEST_MODEL`. 
+- If unset, the skill will grab the first available model from `/v1/models`. 
+- Because not all models support Tools or Vision, these tests degrade gracefully. A 400 error indicating "tools not supported" on the Vision test is captured as a capability limitation, not a core proxy failure.
+
