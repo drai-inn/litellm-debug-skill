@@ -25,6 +25,7 @@ In order:
 - **Service-specific in subdirs:** `references/litellm/`, `scripts/litellm/`, `tests/litellm/`. Naming the seam early. We are not building a multi-service framework yet.
 - **Onboarding by tier:** each tier needs exactly one more credential than the one below it. Tier tests act as the gate.
 - **Multi-version:** two pinned slots, `primary` and `comparison`. Both default to latest stable; override via `LITELLM_VERSION_PRIMARY` / `LITELLM_VERSION_COMPARISON`.
+- **Targeted Testing:** Filter inference tests via `LITELLM_TEST_MODEL` (`all`, `first`, or specific model ID) and `LITELLM_TEST_CAPABILITIES` (e.g., `text,roundtrip`).
 
 ## Conventions
 

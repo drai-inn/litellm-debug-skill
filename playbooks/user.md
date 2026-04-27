@@ -43,9 +43,12 @@ The User tier diagnostic tool groups endpoints into the following logical sets:
 *   **Model Selection:** Inference costs money and requires specific upstream capabilities. The target models are configured via the `LITELLM_TEST_MODEL` environment variable:
     *   `all`: Exhaustively tests the full surface on *every* model returned by `/v1/models`.
     *   `first` (or unset): Acts as a quick smoke-test using the first permitted model.
-    *   `<model_name>`: Isolates testing to a specific model.
-    
-    The script degrades gracefully: if a model explicitly rejects tools or vision with a 400 error, it is recorded as a capability limitation rather than a hard failure.
+    *   `<model_name>`: Isolates testing to a specific model or comma-separated list of models.
+*   **Capabilities Filtering:** You can dynamically filter which capabilities are tested using the `LITELLM_TEST_CAPABILITIES` environment variable:
+    *   `all` (default): Runs text, tools, vision, and roundtrip.
+    *   `<capability>`: A comma-separated list (e.g., `text,roundtrip`) to isolate specific workloads. The resulting diagnostic matrix will dynamically adapt its columns to match.
+
+    The script degrades gracefully: if a model explicitly rejects tools or vision with a 400 error, it is recorded as a capability limitation (`⚠️`) rather than a hard failure.
 
 ## Example Output (Level 0)
 
@@ -53,11 +56,17 @@ The User tier diagnostic tool groups endpoints into the following logical sets:
 > 
 > ▶ IDENTITY & SCOPING
 >   🔑 Key Identity: Valid (Alias: `prod-agent-1`)
->   🛡️  Team/User:    Attached to `team_engineering`
+>   🛡️  Owner:        User `n.jones@auckland.ac.nz`
 >   💰 Budget:       $1.50 / $10.00 spent
 >   🚦 Rate Limits:  1000 TPM / 100 RPM
 > 
 > ▶ MODEL ACCESS
 >   🤖 Permitted:    14 models available via this key
+>
+> ▶ INFERENCE READINESS
+>   Model                           | Text | Tools | Vision | Round-Trip |
+>   --------------------------------+------+-------+--------+------------|
+>   gpt-oss-20b                     |  ✅  |   ✅   |    ✅   |     ✅      |
+>   gemini/gemini-flash-latest      |  ✅  |   ✅   |    ⚠️   |     ⚠️      |
 >   
 > *To investigate a specific failing request, or to view the raw JSON payloads for these permissions, run this script with `--level 1` or `--level 2`.*

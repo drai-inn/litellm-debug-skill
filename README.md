@@ -91,13 +91,20 @@ The skill defaults to Level 0 and will ask if you want to drill down.
 | Rung | Tier      | Required                                    | Tests                          |
 |------|-----------|---------------------------------------------|--------------------------------|
 | 1    | Public    | `LITELLM_BASE_URL`                          | `tests/litellm/public/`        |
-| 2    | User      | + `LITELLM_USER_KEY` (any virtual key)      | `tests/litellm/user/` (TBD)    |
+| 2    | User      | + `LITELLM_USER_KEY` (any virtual key)      | `tests/litellm/user/`          |
 | 3    | Admin     | + `LITELLM_MASTER_KEY`                      | `tests/litellm/admin/` (TBD)   |
 | 4    | Telemetry | + `LANGFUSE_*` (or other backend creds)     | `tests/litellm/telemetry/` (TBD) |
 | 5    | Database  | + `LITELLM_DB_DSN` and `LITELLM_DB_OPTIN=1` | `tests/litellm/database/` (TBD) |
 
 Run the full suite with `pytest`. Tiers without credentials skip
 cleanly with a message naming the env var that would unlock them.
+
+### Inference Readiness Testing
+
+For the User Tier, the skill evaluates actual inference capabilities across different modalities (Text, Tools, Vision, Round-Trip). You can customize what is tested using environment variables:
+
+- `LITELLM_TEST_MODEL`: Set to `all`, `first`, or a specific model like `gpt-4o`.
+- `LITELLM_TEST_CAPABILITIES`: Comma-separated list of capabilities to test (e.g., `text,roundtrip` or `all`).
 
 ## Design
 

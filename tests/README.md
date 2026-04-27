@@ -23,8 +23,21 @@ These tests validate the public attack surface and health of the proxy. No authe
 | `test_service_discovery_endpoints` | `/public/endpoints`<br>`/claude-code/marketplace.json`<br>`/public/agents/fields`<br>`/public/litellm_blog_posts`<br>`/public/providers/fields` | Returns 200 |
 
 ## User Tier (`tests/litellm/user/`)
-*Coming in Phase 2.*
 **Requires:** `LITELLM_BASE_URL` + `LITELLM_USER_KEY`
+
+These tests validate key scoping, budget enforcement, and inference readiness across text, tools, vision, and multi-turn conversations.
+
+| Test | Endpoint(s) | Passes when |
+|------|-------------|-------------|
+| `test_user_key_info` | `/key/info` | Returns 200 (skips if 401/403 meaning endpoint restricted to admins) |
+| `test_user_info` | `/user/info` | Returns 200 (skips if 401/403) |
+| `test_models_list_with_key` | `/v1/models` | Returns 200 and lists permitted models |
+| `test_inference_text` | `/v1/chat/completions` | Standard text payload returns 200 (fails if budget exceeded) |
+| `test_inference_tools` | `/v1/chat/completions` | Tool schema payload returns 200 (skips on 400 capability error) |
+| `test_inference_vision` | `/v1/chat/completions` | Multimodal PNG payload returns 200 (skips on 400 capability error) |
+| `test_inference_roundtrip` | `/v1/chat/completions` | Conversation history with prior tool_calls returns 200 |
+
+*Note: You can control which models are tested during inference via the `LITELLM_TEST_MODEL` environment variable (e.g., `all`, `first`, or `model_name`).*
 
 ## Admin Tier (`tests/litellm/admin/`)
 *Coming in Phase 3.*

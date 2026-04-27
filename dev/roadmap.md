@@ -58,7 +58,7 @@ Tasks:
 
 **Required:** `LITELLM_BASE_URL` + `LITELLM_USER_KEY`.
 
-**Acceptance:** user tier tests pass gracefully; the diagnostic script successfully parses the key's budget/limits and permitted models, and surfaces them in a clear TUI dashboard.
+**Acceptance:** (Completed) user tier tests pass gracefully; the diagnostic script successfully parses the key's budget/limits and permitted models, and surfaces them in a clear TUI dashboard.
 
 ### Admin tier — + `LITELLM_MASTER_KEY`
 
