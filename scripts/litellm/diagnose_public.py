@@ -12,6 +12,8 @@ import os
 import sys
 import argparse
 import requests
+import json
+import re
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -132,6 +134,45 @@ def get_level_0_summary(results):
     print("   unlock the USER TIER.")
     print("   (Run with `--level 1` or `--level 2` for deeper detail)")
 
+def format_content(text, content_type, level=1):
+    """Format content intelligently based on type and verbosity level."""
+    if not text:
+        return ""
+        
+    content_type = content_type.lower() if content_type else ""
+    
+    if "application/json" in content_type:
+        try:
+            parsed = json.loads(text)
+            if level == 1:
+                # Level 1: One-line compact JSON, truncated
+                compact = json.dumps(parsed, separators=(',', ':'))
+                return compact[:150] + ("..." if len(compact) > 150 else "")
+            else:
+                # Level 2: Pretty print, truncate safely if huge
+                pretty = json.dumps(parsed, indent=2)
+                return pretty[:1000] + ("\n... [JSON truncated]" if len(pretty) > 1000 else "")
+        except json.JSONDecodeError:
+            pass # Fall back to text
+            
+    if "text/html" in content_type:
+        if level == 1:
+            # Extract title for a neat summary
+            match = re.search(r'<title[^>]*>(.*?)</title>', text, re.IGNORECASE | re.DOTALL)
+            if match:
+                return f"[HTML Document] Title: '{match.group(1).strip()}'"
+            return f"[HTML Document] ({len(text)} bytes)"
+        else:
+            # Level 2: Still don't dump 50kb of HTML, just show the head/structure
+            return text[:500] + ("\n... [HTML markup truncated]" if len(text) > 500 else "")
+
+    # Default text formatting
+    if level == 1:
+        clean = text.replace('\n', ' ')
+        return clean[:150] + ("..." if len(clean) > 150 else "")
+    else:
+        return text[:1000] + ("\n... [Text truncated]" if len(text) > 1000 else "")
+
 def get_level_1_diagnostics(results):
     print("=== Level 1: Diagnostics ===\n")
     for name, data in results.items():
@@ -141,8 +182,9 @@ def get_level_1_diagnostics(results):
             continue
             
         status = data['status']
-        text = data['text']
-        excerpt = text[:100].replace("\n", " ") + ("..." if len(text) > 100 else "")
+        c_type = data['headers'].get('Content-Type', '')
+        excerpt = format_content(data['text'], c_type, level=1)
+        
         print(f"  * Status: {status}")
         print(f"  * Body Excerpt: {excerpt}\n")
 
@@ -155,7 +197,7 @@ def get_level_2_traces(results, base_url):
         path = data['path']
         status = data['status']
         headers = data['headers']
-        text = data['text']
+        c_type = headers.get('Content-Type', '')
         
         print(f"Full Trace for `{path}`:")
         print(f"```http\n> GET {path} HTTP/1.1\n> Host: {base_url.replace('https://', '').replace('http://', '').rstrip('/')}\n> Accept: */*\n")
@@ -164,7 +206,7 @@ def get_level_2_traces(results, base_url):
             if k.lower() in ["content-type", "content-length", "date"]:
                 print(f"< {k}: {v}")
         
-        body = text[:500] + ("\n... [truncated]" if len(text) > 500 else "")
+        body = format_content(data['text'], c_type, level=2)
         print(f"\n{body}")
         print("```\n")
         print("Reproduction Command:")

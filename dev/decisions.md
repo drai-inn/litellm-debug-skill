@@ -155,3 +155,17 @@ The skill surfaces output to the user using progressive disclosure modeled on CL
 - Raw `curl` or `pytest -v` output by default — too noisy, forces the user to parse HTTP headers to find the issue.
 - Purely conversational answers — loses the "receipts" that developers need to reproduce issues in other tools (Postman, curl).
 
+---
+
+## D008 — Content-aware formatting for diagnostics
+
+**Date:** 2026-04-27
+
+When surfacing diagnostics (Level 1) or traces (Level 2), the skill parses the HTTP `Content-Type` and formats the output accordingly. JSON is cleanly indented, while HTML is parsed to extract the `<title>` or semantic purpose rather than dumping raw markup.
+
+**Why:** as the proxy exposes a mix of API endpoints (`/v1/models`) and UI endpoints (`/ui/model_hub/`), treating all `text` payloads identically creates an unreadable developer experience. By adopting standard CLI practices (like those found in `HTTPie` or `jq`), we ensure the output is dense with meaning, not characters.
+
+**Alternatives considered:**
+- Adding a heavy dependency like `BeautifulSoup` — rejected. We can achieve 90% of the value using basic regex extraction for HTML `<title>` tags without bloating `requirements.txt`.
+- Leaving it up to the user to format — rejected. The skill should "do the work" of presenting readable diagnostics.
+
