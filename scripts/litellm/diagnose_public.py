@@ -15,6 +15,26 @@ import requests
 import json
 import re
 from dotenv import load_dotenv
+from html.parser import HTMLParser
+
+class HTMLTextExtractor(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.text = []
+        self.ignore = False
+        self.ignore_tags = {"script", "style", "head", "meta", "link", "noscript"}
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.ignore_tags:
+            self.ignore = True
+
+    def handle_endtag(self, tag):
+        if tag in self.ignore_tags:
+            self.ignore = False
+
+    def handle_data(self, data):
+        if not self.ignore and data.strip():
+            self.text.append(data.strip())
 
 # Load environment variables
 load_dotenv()
@@ -163,8 +183,16 @@ def format_content(text, content_type, level=1):
                 return f"[HTML Document] Title: '{match.group(1).strip()}'"
             return f"[HTML Document] ({len(text)} bytes)"
         else:
-            # Level 2: Still don't dump 50kb of HTML, just show the head/structure
-            return text[:500] + ("\n... [HTML markup truncated]" if len(text) > 500 else "")
+            # Level 2: Extract readable text instead of raw markup
+            try:
+                parser = HTMLTextExtractor()
+                parser.feed(text)
+                extracted_text = " ".join(parser.text)
+                if not extracted_text:
+                    extracted_text = "[No visible text content]"
+                return extracted_text[:1000] + ("\n... [HTML text truncated]" if len(extracted_text) > 1000 else "")
+            except Exception:
+                return text[:500] + ("\n... [HTML markup truncated]" if len(text) > 500 else "")
 
     # Default text formatting
     if level == 1:
