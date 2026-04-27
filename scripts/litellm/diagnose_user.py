@@ -100,6 +100,26 @@ def check_inference(base_url, user_key, results):
     def test_single_capability(test_model, name, req_data):
         path = req_data["path"]
         payload = req_data["payload"]
+        
+        # We need to know if this was expected to fail to print the right symbol
+        model_info = model_info_map.get(test_model, {})
+        supported_params = model_info.get("supported_openai_params", []) or []
+        expected = True
+        
+        if name == "vision" and model_info.get("supports_vision") is False:
+            expected = False
+        elif name in ("tools", "roundtrip"):
+            if model_info.get("supports_function_calling") is False or (model_info.get("supports_function_calling") is None and "tools" not in supported_params):
+                expected = False
+        elif name == "json_mode":
+            if model_info.get("supports_response_schema") is False or (model_info.get("supports_response_schema") is None and "response_format" not in supported_params):
+                expected = False
+        elif name == "stream":
+            if model_info.get("supports_native_streaming") is False or (model_info.get("supports_native_streaming") is None and "stream" not in supported_params):
+                expected = False
+        elif name == "embedding" and model_info.get("mode") != "embedding":
+            expected = False
+
         try:
             # Special handling for streaming requests
             stream = payload.get("stream", False)
@@ -109,7 +129,7 @@ def check_inference(base_url, user_key, results):
                 elif r.status_code == 429:
                     status_symbol = "⏸️"
                 elif r.status_code in (400, 403, 404, 405):
-                    status_symbol = "⚠️"
+                    status_symbol = "⚪" if expected is False else "⚠️"
                 else:
                     status_symbol = "❌"
                 print(f"  [{status_symbol}] {test_model[:15]:<15} - {name}", file=sys.stderr)
