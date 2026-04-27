@@ -64,7 +64,7 @@ def check_inference(base_url, user_key, results):
     if not models_to_test:
         return
         
-    caps_to_test = ["text", "tools", "vision", "roundtrip"]
+    caps_to_test = ["text", "tools", "vision", "roundtrip", "embedding", "stream", "json_mode"]
     if test_caps_env != "all":
         requested_caps = [c.strip().lower() for c in test_caps_env.split(",") if c.strip()]
         caps_to_test = [c for c in caps_to_test if c in requested_caps]
@@ -79,31 +79,61 @@ def check_inference(base_url, user_key, results):
 
     print(f"Testing inference capabilities {caps_to_test} across models...", file=sys.stderr)
     
+    # Try to fetch model_info to determine expected capabilities dynamically
+    model_info_map = {}
+    try:
+        r_info = requests.get(f"{base_url}/v1/model/info", headers=headers, timeout=5)
+        if r_info.status_code == 200:
+            for item in r_info.json().get("data", []):
+                model_name = item.get("model_name")
+                if model_name:
+                    model_info_map[model_name] = item.get("model_info", {})
+    except Exception:
+        pass
+    
     # Pre-populate the results structure
     for test_model in models_to_test:
         results["inference"][test_model] = {}
+        # Also store any fetched model_info for the matrix formatter
+        results["inference"][test_model]["_model_info"] = model_info_map.get(test_model, {})
         
-    def test_single_capability(test_model, name, payload):
+    def test_single_capability(test_model, name, req_data):
+        path = req_data["path"]
+        payload = req_data["payload"]
         try:
-            r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
-            status_symbol = "✅" if r.status_code == 200 else ("⚠️" if r.status_code in (400, 403, 404) else "❌")
-            print(f"  [{status_symbol}] {test_model[:15]:<15} - {name}", file=sys.stderr)
-            return test_model, name, {
-                "status": r.status_code,
-                "headers": dict(r.headers),
-                "text": r.text,
-                "path": "/v1/chat/completions",
-                "method": "POST",
-                "payload": payload,
-                "error": None
-            }
+            # Special handling for streaming requests
+            stream = payload.get("stream", False)
+            with requests.post(f"{base_url}{path}", headers=headers, json=payload, timeout=20, stream=stream) as r:
+                status_symbol = "✅" if r.status_code == 200 else ("⚠️" if r.status_code in (400, 403, 404, 405, 429) else "❌")
+                print(f"  [{status_symbol}] {test_model[:15]:<15} - {name}", file=sys.stderr)
+                
+                # Fetch text content appropriately depending on stream
+                if stream and r.status_code == 200:
+                    # Read first chunk to confirm SSE
+                    try:
+                        first_line = next(r.iter_lines(decode_unicode=True), "")
+                        response_text = first_line + "\n... [stream continues]"
+                    except StopIteration:
+                        response_text = "[Empty Stream]"
+                else:
+                    response_text = r.text
+                    
+                return test_model, name, {
+                    "status": r.status_code,
+                    "headers": dict(r.headers),
+                    "text": response_text,
+                    "path": path,
+                    "method": "POST",
+                    "payload": payload,
+                    "error": None
+                }
         except Exception as e:
             print(f"  [❌] {test_model[:15]:<15} - {name} (Error)", file=sys.stderr)
             return test_model, name, {
                 "status": None,
                 "headers": {},
                 "text": "",
-                "path": "/v1/chat/completions",
+                "path": path,
                 "method": "POST",
                 "payload": payload,
                 "error": str(e)
@@ -115,38 +145,78 @@ def check_inference(base_url, user_key, results):
             payloads = {}
             if "text" in caps_to_test:
                 payloads["text"] = {
-                    "model": test_model,
-                    "messages": [{"role": "user", "content": "Hello, this is a diagnostic test. Please reply with 'OK'."}],
-                    "max_tokens": 10
+                    "path": "/v1/chat/completions",
+                    "payload": {
+                        "model": test_model,
+                        "messages": [{"role": "user", "content": "Hello, this is a diagnostic test. Please reply with 'OK'."}],
+                        "max_tokens": 10
+                    }
                 }
             if "tools" in caps_to_test:
                 payloads["tools"] = {
-                    "model": test_model,
-                    "messages": [{"role": "user", "content": "What is the weather in London?"}],
-                    "tools": [{"type": "function", "function": {"name": "get_weather", "description": "Get current weather", "parameters": {"type": "object", "properties": {"location": {"type": "string"}}, "required": ["location"]}}}],
-                    "tool_choice": "auto",
-                    "max_tokens": 20
+                    "path": "/v1/chat/completions",
+                    "payload": {
+                        "model": test_model,
+                        "messages": [{"role": "user", "content": "What is the weather in London?"}],
+                        "tools": [{"type": "function", "function": {"name": "get_weather", "description": "Get current weather", "parameters": {"type": "object", "properties": {"location": {"type": "string"}}, "required": ["location"]}}}],
+                        "tool_choice": "auto",
+                        "max_tokens": 20
+                    }
                 }
             if "vision" in caps_to_test:
                 payloads["vision"] = {
-                    "model": test_model,
-                    "messages": [{"role": "user", "content": [{"type": "text", "text": "What is in this image?"}, {"type": "image_url", "image_url": {"url": "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png"}}]}],
-                    "max_tokens": 10
+                    "path": "/v1/chat/completions",
+                    "payload": {
+                        "model": test_model,
+                        "messages": [{"role": "user", "content": [{"type": "text", "text": "What is in this image?"}, {"type": "image_url", "image_url": {"url": "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png"}}]}],
+                        "max_tokens": 10
+                    }
                 }
             if "roundtrip" in caps_to_test:
                 payloads["roundtrip"] = {
-                    "model": test_model,
-                    "messages": [
-                        {"role": "user", "content": "What is the weather in London?"},
-                        {"role": "assistant", "content": "I should check the weather.", "tool_calls": [{"id": "call_123", "type": "function", "function": {"name": "get_weather", "arguments": "{\"location\": \"London\"}"}}]},
-                        {"role": "tool", "tool_call_id": "call_123", "name": "get_weather", "content": "It is raining."}
-                    ],
-                    "max_tokens": 20
+                    "path": "/v1/chat/completions",
+                    "payload": {
+                        "model": test_model,
+                        "messages": [
+                            {"role": "user", "content": "What is the weather in London?"},
+                            {"role": "assistant", "content": "I should check the weather.", "tool_calls": [{"id": "call_123", "type": "function", "function": {"name": "get_weather", "arguments": "{\"location\": \"London\"}"}}]},
+                            {"role": "tool", "tool_call_id": "call_123", "name": "get_weather", "content": "It is raining."}
+                        ],
+                        "max_tokens": 20
+                    }
+                }
+            if "embedding" in caps_to_test:
+                payloads["embedding"] = {
+                    "path": "/v1/embeddings",
+                    "payload": {
+                        "model": test_model,
+                        "input": "good morning from litellm"
+                    }
+                }
+            if "stream" in caps_to_test:
+                payloads["stream"] = {
+                    "path": "/v1/chat/completions",
+                    "payload": {
+                        "model": test_model,
+                        "messages": [{"role": "user", "content": "Say hello"}],
+                        "stream": True,
+                        "max_tokens": 10
+                    }
+                }
+            if "json_mode" in caps_to_test:
+                payloads["json_mode"] = {
+                    "path": "/v1/chat/completions",
+                    "payload": {
+                        "model": test_model,
+                        "messages": [{"role": "user", "content": "Output JSON with key 'status' and value 'ok'."}],
+                        "response_format": {"type": "json_object"},
+                        "max_tokens": 15
+                    }
                 }
             
-            for name, payload in payloads.items():
+            for name, req_data in payloads.items():
                 if name in caps_to_test:
-                    futures.append(executor.submit(test_single_capability, test_model, name, payload))
+                    futures.append(executor.submit(test_single_capability, test_model, name, req_data))
                 
         for future in concurrent.futures.as_completed(futures):
             test_model, name, res = future.result()
@@ -262,14 +332,23 @@ def get_level_0_summary(results):
     if "inference" not in results or not results["inference"]:
         print("  ⚠️ Skipped:      No test model available.")
     else:
-        caps_tested = results.get("inference_caps_tested", ["text", "tools", "vision", "roundtrip"])
+        caps_tested = results.get("inference_caps_tested", ["text", "tools", "vision", "roundtrip", "embedding", "stream", "json_mode"])
         
         # Helper to format capability status
-        def format_cap(res):
+        def format_cap(res, expected=None):
             if not res: return " ➖ "
-            if res.get("status") == 200:
+            
+            status = res.get("status")
+            if status == 200:
+                # If it passed but the proxy said it shouldn't have supported it, note it but it's a pass
+                if expected is False:
+                    return " ✅*"
                 return " ✅ "
-            elif res.get("status") in (400, 403, 404):
+            elif status in (400, 403, 404, 405, 429):
+                # If the endpoint explicitly says it doesn't support this, 
+                # a 400 rejection is the *expected* behavior, so it's a structural pass (represented as a dash/skip).
+                if expected is False:
+                    return " ➖ "
                 return " ⚠️ "
             else:
                 return " ❌ "
@@ -280,6 +359,9 @@ def get_level_0_summary(results):
         if "tools" in caps_tested: headers.append(" Tools ")
         if "vision" in caps_tested: headers.append(" Vision ")
         if "roundtrip" in caps_tested: headers.append(" Round-Trip ")
+        if "embedding" in caps_tested: headers.append(" Embed ")
+        if "stream" in caps_tested: headers.append(" Stream ")
+        if "json_mode" in caps_tested: headers.append(" JSON Mode ")
         
         header_row = "  " + "|".join(headers) + "|"
         divider_row = "  " + "+".join(["-" * len(h) for h in headers]) + "|"
@@ -294,14 +376,33 @@ def get_level_0_summary(results):
             disp_model = test_model[:29] + ("…" if len(test_model) > 30 else " " * (31 - len(test_model)))
             row_cols.append(f"{disp_model} ")
             
+            # Extract ground-truth expected capabilities
+            model_info = caps.get("_model_info", {})
+            supported_params = model_info.get("supported_openai_params", [])
+            
+            exp_vision = model_info.get("supports_vision")
+            exp_tools = model_info.get("supports_function_calling")
+            if exp_tools is None and "tools" in supported_params:
+                exp_tools = True
+            exp_json = model_info.get("supports_response_schema")
+            if exp_json is None and "response_format" in supported_params:
+                exp_json = True
+            exp_stream = "stream" in supported_params if supported_params else None
+            
             if "text" in caps_tested: 
                 row_cols.append(f" {format_cap(caps.get('text'))} ")
             if "tools" in caps_tested: 
-                row_cols.append(f"  {format_cap(caps.get('tools'))}  ")
+                row_cols.append(f"  {format_cap(caps.get('tools'), expected=exp_tools)}  ")
             if "vision" in caps_tested: 
-                row_cols.append(f"   {format_cap(caps.get('vision'))}  ")
+                row_cols.append(f"   {format_cap(caps.get('vision'), expected=exp_vision)}  ")
             if "roundtrip" in caps_tested: 
                 row_cols.append(f"    {format_cap(caps.get('roundtrip'))}     ")
+            if "embedding" in caps_tested: 
+                row_cols.append(f"   {format_cap(caps.get('embedding'))}    ")
+            if "stream" in caps_tested: 
+                row_cols.append(f"   {format_cap(caps.get('stream'), expected=exp_stream)}   ")
+            if "json_mode" in caps_tested: 
+                row_cols.append(f"    {format_cap(caps.get('json_mode'), expected=exp_json)}    ")
             
             print("  " + "|".join(row_cols) + "|")
 
