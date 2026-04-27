@@ -140,4 +140,18 @@ is the only refresh path that keeps the snapshot honest.
 - Lift content from third-party catalogs with attribution — speeds up
   initial work but creates a long-tail maintenance issue.
 - Maintain our own catalog upstream-of-upstream — overkill; the
-  upstream project's own materials are the right source.
+
+---
+
+## D007 — Progressive disclosure & explicit verbosity levels
+
+**Date:** 2026-04-27
+
+The skill surfaces output to the user using progressive disclosure modeled on CLI verbosity levels: Level 0 (Summary/Traffic Light), Level 1 (Diagnostics/The "Why"), and Level 2 (Trace/The "Receipts"). The skill defaults to Level 0 and explicitly offers drill-down.
+
+**Why:** raw JSON and stack traces overwhelm users. A world-class debugging experience respects the user's time by providing actionable business-logic summaries first (like SRE runbooks), while keeping the deepest technical receipts (HTTP traces) readily available for reproduction.
+
+**Alternatives considered:**
+- Raw `curl` or `pytest -v` output by default — too noisy, forces the user to parse HTTP headers to find the issue.
+- Purely conversational answers — loses the "receipts" that developers need to reproduce issues in other tools (Postman, curl).
+

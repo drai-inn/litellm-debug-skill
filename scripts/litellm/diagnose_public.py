@@ -1,0 +1,195 @@
+#!/usr/bin/env python3
+"""
+Public Tier Diagnostic Tool
+
+Runs the public tier endpoint checks and outputs the results using
+progressive disclosure (Levels 0, 1, and 2).
+
+Usage:
+    python scripts/litellm/diagnose_public.py [--level 0|1|2]
+"""
+import os
+import sys
+import argparse
+import requests
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Categorized Endpoints for Dashboard View
+CATEGORIES = {
+    "Health & Performance": {
+        "liveliness": "/health/liveliness",
+        "readiness": "/health/readiness",
+        "metrics": "/metrics"
+    },
+    "Security & Identity Surface": {
+        "models": "/v1/models",
+        "jwks": "/.well-known/jwks.json",
+        "openid": "/.well-known/openid-configuration"
+    },
+    "UI & Client Configuration": {
+        "model_hub": "/ui/model_hub/",
+        "ui_config": "/.well-known/litellm-ui-config",
+        "ui_settings": "/get/ui_settings",
+        "model_hub_info": "/public/model_hub/info"
+    },
+    "Service Discovery & Capabilities": {
+        "public_endpoints": "/public/endpoints",
+        "providers_fields": "/public/providers/fields",
+        "agents_fields": "/public/agents/fields",
+        "claude_marketplace": "/claude-code/marketplace.json",
+        "blog_posts": "/public/litellm_blog_posts"
+    }
+}
+
+# Flatten for easy fetching
+ENDPOINTS = {name: path for cat in CATEGORIES.values() for name, path in cat.items()}
+
+def check_endpoints(base_url):
+    results = {}
+    for name, path in ENDPOINTS.items():
+        try:
+            r = requests.get(f"{base_url}{path}", timeout=5)
+            results[name] = {
+                "status": r.status_code,
+                "headers": dict(r.headers),
+                "text": r.text,
+                "path": path,
+                "error": None
+            }
+        except Exception as e:
+            results[name] = {
+                "status": None,
+                "headers": {},
+                "text": "",
+                "path": path,
+                "error": str(e)
+            }
+    return results
+
+def get_level_0_summary(results):
+    print("┌───────────────────────────────────────────────────────────┐")
+    print("│              LITELLM PUBLIC TIER DASHBOARD                │")
+    print("└───────────────────────────────────────────────────────────┘\n")
+    
+    # 1. Health & Performance
+    print("▶ HEALTH & PERFORMANCE")
+    live = results.get("liveliness", {})
+    ready = results.get("readiness", {})
+    metrics = results.get("metrics", {})
+    
+    if live.get("status") == 200 and ready.get("status") in (200, 503):
+        print("  ✅ Proxy Core:   Reachable & Responsive")
+        if ready.get("status") == 503:
+             print("  ⚠️ Dependencies: Degraded (Database or Cache failing)")
+        else:
+             print("  ✅ Dependencies: Healthy")
+    else:
+        print("  ❌ Proxy Core:   Unreachable or failing")
+        
+    if metrics.get("status") == 200:
+        print("  📊 Observability: Prometheus /metrics exposed")
+    else:
+        print("  盲 Observability: Metrics disabled (404)")
+
+    # 2. Security & Identity Surface
+    print("\n▶ SECURITY & IDENTITY SURFACE")
+    models = results.get("models", {})
+    if models.get("status") in (401, 403):
+        print("  🔒 Core API:     Auth-gated (Safe)")
+    elif models.get("status") == 200:
+        print("  ⚠️ Core API:     Publicly exposed (Vulnerable!)")
+    
+    jwks = results.get("jwks", {})
+    openid = results.get("openid", {})
+    if jwks.get("status") == 200 or openid.get("status") == 200:
+        print("  🔑 Identity:     SSO/OIDC configuration exposed")
+    else:
+        print("  🛡️ Identity:     No SSO configuration exposed")
+
+    # 3. UI & Client Configuration
+    print("\n▶ UI & CLIENT CONFIGURATION")
+    ui = results.get("model_hub", {})
+    ui_cfg = [k for k in ["ui_config", "ui_settings", "model_hub_info"] if results.get(k, {}).get("status") == 200]
+    
+    if ui.get("status") == 200:
+        print(f"  🖥️  Web UI:       Exposed (Model Hub)")
+    else:
+        print(f"  🖥️  Web UI:       Disabled")
+    print(f"  ⚙️  Config Data:  {len(ui_cfg)} frontend settings endpoints exposed")
+
+    # 4. Service Discovery
+    print("\n▶ SERVICE DISCOVERY CAPABILITIES")
+    disc_keys = ["public_endpoints", "providers_fields", "agents_fields", "claude_marketplace", "blog_posts"]
+    exposed_disc = [k for k in disc_keys if results.get(k, {}).get("status") == 200]
+    print(f"  📡 Discovery:    {len(exposed_disc)}/{len(disc_keys)} provider and capability endpoints exposed")
+
+    print("\n" + "─"*59)
+    print("💡 Next Step: To investigate why specific inference requests")
+    print("   are failing, provide LITELLM_USER_KEY in your .env to")
+    print("   unlock the USER TIER.")
+    print("   (Run with `--level 1` or `--level 2` for deeper detail)")
+
+def get_level_1_diagnostics(results):
+    print("=== Level 1: Diagnostics ===\n")
+    for name, data in results.items():
+        print(f"Diagnostics for `{data['path']}`:")
+        if data['error']:
+            print(f"  * Error: {data['error']}\n")
+            continue
+            
+        status = data['status']
+        text = data['text']
+        excerpt = text[:100].replace("\n", " ") + ("..." if len(text) > 100 else "")
+        print(f"  * Status: {status}")
+        print(f"  * Body Excerpt: {excerpt}\n")
+
+def get_level_2_traces(results, base_url):
+    print("=== Level 2: Traces ===\n")
+    for name, data in results.items():
+        if data['error']:
+            continue
+            
+        path = data['path']
+        status = data['status']
+        headers = data['headers']
+        text = data['text']
+        
+        print(f"Full Trace for `{path}`:")
+        print(f"```http\n> GET {path} HTTP/1.1\n> Host: {base_url.replace('https://', '').replace('http://', '').rstrip('/')}\n> Accept: */*\n")
+        print(f"< HTTP/1.1 {status}")
+        for k, v in headers.items():
+            if k.lower() in ["content-type", "content-length", "date"]:
+                print(f"< {k}: {v}")
+        
+        body = text[:500] + ("\n... [truncated]" if len(text) > 500 else "")
+        print(f"\n{body}")
+        print("```\n")
+        print("Reproduction Command:")
+        print(f"curl -v -H \"Accept: application/json\" {base_url.rstrip('/')}{path}\n")
+
+def main():
+    parser = argparse.ArgumentParser(description="LiteLLM Public Tier Diagnostics")
+    parser.add_argument("--level", type=int, choices=[0, 1, 2], default=0, help="Verbosity level (0=Summary, 1=Diagnostics, 2=Traces)")
+    args = parser.parse_args()
+
+    base_url = os.getenv("LITELLM_BASE_URL")
+    if not base_url:
+        print("Error: LITELLM_BASE_URL is not set in .env")
+        sys.exit(1)
+
+    results = check_endpoints(base_url)
+
+    if args.level >= 0:
+        get_level_0_summary(results)
+    if args.level >= 1:
+        print("\n" + "="*50 + "\n")
+        get_level_1_diagnostics(results)
+    if args.level == 2:
+        print("\n" + "="*50 + "\n")
+        get_level_2_traces(results, base_url)
+
+if __name__ == "__main__":
+    main()

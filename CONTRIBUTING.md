@@ -1,62 +1,67 @@
-# Contributing
+# Contributing to litellm-debug
 
-Thanks for your interest. This is a young project; the design is
-deliberate and documented in [dev/](dev/). Read those files before
-opening a PR.
+First off, thank you for considering contributing to the `litellm-debug` skill! It's community members like you that keep diagnostic tools accurate as upstream projects evolve.
 
-## Read first
+This project follows the [Agent Skills](https://agentskills.io/) open format for giving agents new capabilities. We are building a read-side, investigative tool for LiteLLM deployments.
 
-1. [dev/intent.md](dev/intent.md) — what this skill is and isn't.
-2. [dev/roadmap.md](dev/roadmap.md) — current phase and acceptance criteria.
-3. [dev/decisions.md](dev/decisions.md) — architectural decision log.
+## Core Philosophy
 
-## Workflow
+Before contributing, please read our foundational documents:
+1. `dev/intent.md` — What this skill is and isn't.
+2. `dev/roadmap.md` — Our phased approach and acceptance criteria.
+3. `dev/decisions.md` — Our architectural decisions.
 
-1. Pick an open acceptance criterion from `dev/roadmap.md`. If you
-   want to work on something not on the roadmap, open an issue first
-   to discuss the fit.
-2. Open a draft PR with the phase number and acceptance criterion in
-   the description.
-3. New architectural decisions append a fresh entry to
-   `dev/decisions.md` (next free `Dxxx` ID, dated). Don't edit prior
-   entries. Capture durable principles, not the narrative of arriving
-   at them.
-4. Spec anchoring: never reference an endpoint or schema column
-   without naming the LiteLLM version. All references must trace to a
-   snapshot under `references/litellm/spec/<version>/`.
+We strictly follow a **Tier Model** (Public, User, Admin, Telemetry, Database). Our goal is always to use the *lowest fidelity tier* that can answer the user's question, and we rely on **Spec Anchoring** to ensure our tests are based on reality, not guesswork.
 
-## Tests
+## Your First Contribution: Validating the Public Tier
 
-The test suite is the onboarding documentation. Tests for each tier
-are runnable standalone with that tier's credentials, and they skip
-cleanly when those credentials are absent.
+A great way to get started and understand how this project works is to validate the completeness of our Public tier tests. LiteLLM frequently adds new configuration and UI endpoints, and it's our job to ensure our smoke tests cover the full public attack surface.
 
-A new tier-specific test must:
-- Skip cleanly when its credentials are not in env (not fail).
-- Print a diagnostic message naming the env var to set.
-- Carry the right marker (`tier_public`, `tier_user`, `tier_admin`,
-  `tier_telemetry`, or `tier_database`).
+Here is the exact loop you can run to contribute:
 
-## Style
+### 1. Set up your environment
+Clone the repo and install dependencies:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+```
+Add your proxy URL to `.env`: `LITELLM_BASE_URL=https://your-proxy.com`
 
-- Comments only when the WHY is non-obvious.
-- No abstractions ahead of the second concrete need.
-- Service-specific material lives under named subdirectories
-  (currently `litellm/` everywhere). Don't flatten this.
-- Match the existing tone in `dev/`: tight, declarative, no marketing
-  voice.
+### 2. Pin the Specifications
+We never guess endpoint paths. We derive them from upstream. Run the spec pin tool to download the `openapi.json` for your LiteLLM version:
+```bash
+python scripts/litellm/spec_pin.py
+```
 
-## Spec changes
+### 3. Discover Public Endpoints
+Run our developer discovery tool. This parses the downloaded OpenAPI spec for any endpoint that does *not* require security, and then dynamically pings your live proxy to see which ones return `200 OK`:
+```bash
+python scripts/dev/find_public_endpoints.py
+```
 
-When LiteLLM ships a new version that changes endpoints or schema:
-1. Re-pin: `python scripts/litellm/spec_pin.py --version <new>`
-   (Phase 1+).
-2. The snapshot lands at `references/litellm/spec/<new>/`.
-3. Update affected tests, playbooks, and references.
-4. Append an entry to `dev/decisions.md` if behaviour changes
-   meaningfully (e.g. an endpoint removed, a schema column dropped).
+### 4. Compare and Contribute
+Look at the output of the script. Are there endpoints returning `200 OK` that are *not* currently listed in our tests? 
+Check `tests/litellm/public/test_public.py` and `scripts/litellm/diagnose_public.py`.
 
-## License of contributions
+If you find a new public endpoint (e.g., a new `.well-known` config or public `/ui/` path):
+1. Add it to `test_public_config_endpoints` in `tests/litellm/public/test_public.py`.
+2. Add it to the `ENDPOINTS` dictionary in `scripts/litellm/diagnose_public.py`.
+3. Create a Pull Request!
 
-By opening a PR, you agree to license your contribution under the
-project's license (MIT — see [LICENSE](LICENSE)).
+## How to report a bug
+
+When filing an issue, make sure to answer these questions:
+1. What version of LiteLLM is your proxy running? (You can check `/health/readiness`)
+2. What tier were you trying to debug (Public, User, Admin)?
+3. What did you expect the skill to do?
+4. What happened instead?
+
+If you find a security vulnerability in how we handle credentials or traces, please do **NOT** open a public issue. Email the maintainers directly.
+
+## Code review process
+
+*   Ensure your tests pass (`pytest tests/litellm/public -v`).
+*   Ensure missing credentials cause a test to `skip` gracefully, not `fail`.
+*   We review PRs weekly. After feedback, we expect a response within a week or two, or we may close the PR to keep the queue clean.
