@@ -13,6 +13,7 @@ import sys
 import argparse
 import requests
 import json
+import concurrent.futures
 from dotenv import load_dotenv
 
 # Re-use content formatter from public diagnostics
@@ -65,59 +66,78 @@ def check_inference(base_url, user_key, results):
     
     results["inference"] = {}
     
+    print("Testing inference capabilities across models...", file=sys.stderr)
+    
+    # Pre-populate the results structure
     for test_model in models_to_test:
-        payloads = {
-            "text": {
-                "model": test_model,
-                "messages": [{"role": "user", "content": "Hello, this is a diagnostic test. Please reply with 'OK'."}],
-                "max_tokens": 10
-            },
-            "tools": {
-                "model": test_model,
-                "messages": [{"role": "user", "content": "What is the weather in London?"}],
-                "tools": [{"type": "function", "function": {"name": "get_weather", "description": "Get current weather", "parameters": {"type": "object", "properties": {"location": {"type": "string"}}, "required": ["location"]}}}],
-                "tool_choice": "auto",
-                "max_tokens": 20
-            },
-            "vision": {
-                "model": test_model,
-                "messages": [{"role": "user", "content": [{"type": "text", "text": "What is in this image?"}, {"type": "image_url", "image_url": {"url": "https://upload.wikimedia.org/wikipedia/commons/a/a7/React-icon.svg"}}]}],
-                "max_tokens": 10
-            },
-            "roundtrip": {
-                "model": test_model,
-                "messages": [
-                    {"role": "user", "content": "What is the weather in London?"},
-                    {"role": "assistant", "content": "I should check the weather.", "tool_calls": [{"id": "call_123", "type": "function", "function": {"name": "get_weather", "arguments": "{\"location\": \"London\"}"}}]},
-                    {"role": "tool", "tool_call_id": "call_123", "name": "get_weather", "content": "It is raining."}
-                ],
-                "max_tokens": 20
-            }
-        }
-        
         results["inference"][test_model] = {}
-        for name, payload in payloads.items():
-            try:
-                r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
-                results["inference"][test_model][name] = {
-                    "status": r.status_code,
-                    "headers": dict(r.headers),
-                    "text": r.text,
-                    "path": "/v1/chat/completions",
-                    "method": "POST",
-                    "payload": payload,
-                    "error": None
+        
+    def test_single_capability(test_model, name, payload):
+        try:
+            r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
+            status_symbol = "✅" if r.status_code == 200 else ("⚠️" if r.status_code in (400, 403, 404) else "❌")
+            print(f"  [{status_symbol}] {test_model[:15]:<15} - {name}", file=sys.stderr)
+            return test_model, name, {
+                "status": r.status_code,
+                "headers": dict(r.headers),
+                "text": r.text,
+                "path": "/v1/chat/completions",
+                "method": "POST",
+                "payload": payload,
+                "error": None
+            }
+        except Exception as e:
+            print(f"  [❌] {test_model[:15]:<15} - {name} (Error)", file=sys.stderr)
+            return test_model, name, {
+                "status": None,
+                "headers": {},
+                "text": "",
+                "path": "/v1/chat/completions",
+                "method": "POST",
+                "payload": payload,
+                "error": str(e)
+            }
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = []
+        for test_model in models_to_test:
+            payloads = {
+                "text": {
+                    "model": test_model,
+                    "messages": [{"role": "user", "content": "Hello, this is a diagnostic test. Please reply with 'OK'."}],
+                    "max_tokens": 10
+                },
+                "tools": {
+                    "model": test_model,
+                    "messages": [{"role": "user", "content": "What is the weather in London?"}],
+                    "tools": [{"type": "function", "function": {"name": "get_weather", "description": "Get current weather", "parameters": {"type": "object", "properties": {"location": {"type": "string"}}, "required": ["location"]}}}],
+                    "tool_choice": "auto",
+                    "max_tokens": 20
+                },
+                "vision": {
+                    "model": test_model,
+                    "messages": [{"role": "user", "content": [{"type": "text", "text": "What is in this image?"}, {"type": "image_url", "image_url": {"url": "https://upload.wikimedia.org/wikipedia/commons/a/a7/React-icon.svg"}}]}],
+                    "max_tokens": 10
+                },
+                "roundtrip": {
+                    "model": test_model,
+                    "messages": [
+                        {"role": "user", "content": "What is the weather in London?"},
+                        {"role": "assistant", "content": "I should check the weather.", "tool_calls": [{"id": "call_123", "type": "function", "function": {"name": "get_weather", "arguments": "{\"location\": \"London\"}"}}]},
+                        {"role": "tool", "tool_call_id": "call_123", "name": "get_weather", "content": "It is raining."}
+                    ],
+                    "max_tokens": 20
                 }
-            except Exception as e:
-                results["inference"][test_model][name] = {
-                    "status": None,
-                    "headers": {},
-                    "text": "",
-                    "path": "/v1/chat/completions",
-                    "method": "POST",
-                    "payload": payload,
-                    "error": str(e)
-                }
+            }
+            
+            for name, payload in payloads.items():
+                futures.append(executor.submit(test_single_capability, test_model, name, payload))
+                
+        for future in concurrent.futures.as_completed(futures):
+            test_model, name, res = future.result()
+            results["inference"][test_model][name] = res
+            
+    print("Inference testing complete.\n", file=sys.stderr)
 
 def check_endpoints(base_url, user_key):
     results = {}
