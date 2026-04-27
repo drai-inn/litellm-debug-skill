@@ -359,7 +359,6 @@ def get_level_0_summary(results):
     else:
          print(f"  ❓ Permitted:    Unexpected status {models.get('status')}")
 
-    # 3. Inference Readiness
     print("\n▶ INFERENCE READINESS")
     if "inference" not in results or not results["inference"]:
         print("  ⚠️ Skipped:      No test model available.")
@@ -405,6 +404,31 @@ def get_level_0_summary(results):
         print(header_row)
         print(divider_row)
         
+        error_log = []
+        def extract_error(model, cap_name, res, symbol):
+            if not res: return
+            status = res.get("status")
+            text = res.get("text", "")
+            err_msg = ""
+            if res.get("error"): # Python-level error like connection timeout
+                err_msg = res.get("error")
+            elif text:
+                try:
+                    parsed = json.loads(text)
+                    if "error" in parsed:
+                        if isinstance(parsed["error"], dict) and "message" in parsed["error"]:
+                            err_msg = parsed["error"]["message"]
+                        else:
+                            err_msg = str(parsed["error"])
+                except:
+                    err_msg = text[:80].replace("\n", " ") + "..."
+            
+            if err_msg:
+                # truncate err_msg a bit for dashboard
+                err_msg = err_msg.replace("\n", " ")
+                err_msg = err_msg[:120] + ("..." if len(err_msg) > 120 else "")
+                error_log.append(f"    {symbol} {model} ({cap_name}): {status if status else 'Err'} - {err_msg}")
+        
         for test_model, caps in results["inference"].items():
             row_cols = []
             
@@ -434,21 +458,40 @@ def get_level_0_summary(results):
             exp_roundtrip = exp_tools
             
             if "text" in caps_tested: 
-                row_cols.append(f" {format_cap(caps.get('text'))} ")
+                sym = format_cap(caps.get('text'))
+                if sym.strip() in ("❌", "⚠️", "⏸️", "⏳"): extract_error(test_model, "text", caps.get('text'), sym.strip())
+                row_cols.append(f" {sym} ")
             if "tools" in caps_tested: 
-                row_cols.append(f"  {format_cap(caps.get('tools'), expected=exp_tools)}  ")
+                sym = format_cap(caps.get('tools'), expected=exp_tools)
+                if sym.strip() in ("❌", "⚠️", "⏸️", "⏳"): extract_error(test_model, "tools", caps.get('tools'), sym.strip())
+                row_cols.append(f"  {sym}  ")
             if "vision" in caps_tested: 
-                row_cols.append(f"   {format_cap(caps.get('vision'), expected=exp_vision)}  ")
+                sym = format_cap(caps.get('vision'), expected=exp_vision)
+                if sym.strip() in ("❌", "⚠️", "⏸️", "⏳"): extract_error(test_model, "vision", caps.get('vision'), sym.strip())
+                row_cols.append(f"   {sym}  ")
             if "roundtrip" in caps_tested: 
-                row_cols.append(f"    {format_cap(caps.get('roundtrip'), expected=exp_roundtrip)}     ")
+                sym = format_cap(caps.get('roundtrip'), expected=exp_roundtrip)
+                if sym.strip() in ("❌", "⚠️", "⏸️", "⏳"): extract_error(test_model, "roundtrip", caps.get('roundtrip'), sym.strip())
+                row_cols.append(f"    {sym}     ")
             if "embedding" in caps_tested: 
-                row_cols.append(f"   {format_cap(caps.get('embedding'), expected=exp_embed)}    ")
+                sym = format_cap(caps.get('embedding'), expected=exp_embed)
+                if sym.strip() in ("❌", "⚠️", "⏸️", "⏳"): extract_error(test_model, "embedding", caps.get('embedding'), sym.strip())
+                row_cols.append(f"   {sym}    ")
             if "stream" in caps_tested: 
-                row_cols.append(f"   {format_cap(caps.get('stream'), expected=exp_stream)}   ")
+                sym = format_cap(caps.get('stream'), expected=exp_stream)
+                if sym.strip() in ("❌", "⚠️", "⏸️", "⏳"): extract_error(test_model, "stream", caps.get('stream'), sym.strip())
+                row_cols.append(f"   {sym}   ")
             if "json_mode" in caps_tested: 
-                row_cols.append(f"    {format_cap(caps.get('json_mode'), expected=exp_json)}    ")
+                sym = format_cap(caps.get('json_mode'), expected=exp_json)
+                if sym.strip() in ("❌", "⚠️", "⏸️", "⏳"): extract_error(test_model, "json_mode", caps.get('json_mode'), sym.strip())
+                row_cols.append(f"    {sym}    ")
             
             print("  " + "|".join(row_cols) + "|")
+
+        if error_log:
+            print("\n  ▶ DETAILED ERROR SUMMARY")
+            for err in error_log:
+                print(err)
 
     print("\n" + "─"*59)
     print("💡 Next Step: To view the raw JSON payloads containing your")

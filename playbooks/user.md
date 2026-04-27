@@ -76,5 +76,9 @@ The User tier diagnostic tool groups endpoints into the following logical sets:
 >   --------------------------------+------+-------+--------+------------+-------+--------+-----------|
 >   gpt-oss-20b                     |  ✅  |   ✅   |    ✅   |     ✅      |   ⚪   |   ✅    |     ⚪     |
 >   gemini/gemini-flash-latest      |  ⏸️  |   ⏸️   |    ⚪   |     ⏳      |   ⚪   |   ⏸️    |     ⏸️     |
+>
+>   ▶ DETAILED ERROR SUMMARY
+>     ⏸️ gemini/gemini-flash-latest (text): 429 - litellm.RateLimitError: litellm.RateLimitError: geminiException - {   "error": {     "code": 429,     "message": "You ex...
+>     ⏳ gemini/gemini-flash-latest (roundtrip): Err - Read timed out. (read timeout=20)
 >   
 > *To investigate a specific failing request, or to view the raw JSON payloads for these permissions, run this script with `--level 1` or `--level 2`.*
