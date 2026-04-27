@@ -29,3 +29,8 @@ Tests are the ground truth for proxy behavior.
 We are building an AI agent skill, not just a CLI tool.
 - **Practice:** Always ensure the `SKILL.md` frontmatter (`name`, `description`) is highly optimized for AI intent-matching.
 - **Playbook Routing:** Ensure playbooks (`playbooks/*.md`) explicitly define the execution loop the AI should follow when a user requests an investigation.
+
+## 6. Investigative Discovery (Bug vs. Config)
+When the diagnostic tools output a Level 2 Trace containing an error, we do not stop at the surface level.
+- **Practice:** Use `playbooks/investigate_bug.md` to run an investigative discovery loop. Use the local source clone (`~/.cache/litellm-debug/sources/...`) to grep the exact error message. Validate this against the local LiteLLM documentation clone (`.../docs/my-website/docs`).
+- **Reporting Format:** The agent must synthesize the raw trace into a structured "Bug vs. Config" report that references the exact lines of code failing, and query upstream issues/PRs (e.g., via `gh issue list --search "..."`) to determine if this is a known codebase defect or a user configuration error.

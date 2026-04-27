@@ -101,10 +101,27 @@ cleanly with a message naming the env var that would unlock them.
 
 ### Inference Readiness Testing
 
-For the User Tier, the skill evaluates actual inference capabilities across different modalities (Text, Tools, Vision, Round-Trip). You can customize what is tested using environment variables:
+For the User Tier, the skill evaluates actual inference capabilities across different modalities. We test **7 distinct inference gateway dimensions** to ensure full agentic readiness:
+1. **Text**: Standard `/v1/chat/completions` text routing.
+2. **Tools**: Function calling and structured tool schema routing.
+3. **Vision**: Multimodal image processing.
+4. **Round-Trip**: Multi-turn conversation context preservation (crucial for agent loops).
+5. **Embeddings**: `/v1/embeddings` vectorization routing.
+6. **Streaming**: Server-Sent Events (SSE) stream delivery.
+7. **JSON Mode**: Structured output forcing via `response_format`.
+
+You can customize what is tested using environment variables:
 
 - `LITELLM_TEST_MODEL`: Set to `all`, `first`, or a specific model like `gpt-4o`.
 - `LITELLM_TEST_CAPABILITIES`: Comma-separated list of capabilities to test (e.g., `text,roundtrip` or `all`).
+
+## Investigative Discovery
+
+When the skill uncovers a failure (e.g., a specific capability like Round-Trip failing on a specific model), it doesn't just stop at the error. It uses the `playbooks/investigate_bug.md` workflow to:
+1. Grep the local LiteLLM source clone (`~/.cache/litellm-debug/sources/...`) for the failing code.
+2. Cross-reference the local LiteLLM documentation clone (`.../docs/my-website/docs`).
+3. Query the upstream GitHub repository for known issues or pull requests.
+4. Synthesize a definitive "Bug vs. Config" report.
 
 ## Design
 

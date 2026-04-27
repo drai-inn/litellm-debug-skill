@@ -346,9 +346,9 @@ def get_level_0_summary(results):
                 return " ✅ "
             elif status in (400, 403, 404, 405, 429):
                 # If the endpoint explicitly says it doesn't support this, 
-                # a 400 rejection is the *expected* behavior, so it's a structural pass (represented as a dash/skip).
+                # a 400 rejection is the *expected* behavior, so it's a structural pass (represented as an open circle).
                 if expected is False:
-                    return " ➖ "
+                    return " ⭕️ "
                 return " ⚠️ "
             else:
                 return " ❌ "

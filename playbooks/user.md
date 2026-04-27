@@ -51,7 +51,7 @@ The User tier diagnostic tool groups endpoints into the following logical sets:
     *   `all` (default): Runs text, tools, vision, and roundtrip.
     *   `<capability>`: A comma-separated list (e.g., `text,roundtrip`) to isolate specific workloads. The resulting diagnostic matrix will dynamically adapt its columns to match.
 
-    The script degrades gracefully: if a model explicitly rejects tools or vision with a 400 error, it is recorded as a capability limitation (`⚠️`) rather than a hard failure.
+    The script loads ground-truth capabilities from `/v1/model/info`. If a model explicitly rejects tools or vision with a 400 error, and the info endpoint confirms it is unsupported, it is recorded as a known capability limitation (`⭕️`) rather than a hard failure (`❌`) or a warning (`⚠️`).
 
 ## Example Output (Level 0)
 
@@ -69,7 +69,7 @@ The User tier diagnostic tool groups endpoints into the following logical sets:
 > ▶ INFERENCE READINESS
 >   Model                           | Text | Tools | Vision | Round-Trip | Embed | Stream | JSON Mode |
 >   --------------------------------+------+-------+--------+------------+-------+--------+-----------|
->   gpt-oss-20b                     |  ✅  |   ✅   |    ✅   |     ✅      |   ❌   |   ✅    |     ✅     |
->   gemini/gemini-flash-latest      |  ✅  |   ✅   |    ⚠️   |     ⚠️      |   ❌   |   ✅    |     ✅     |
+>   gpt-oss-20b                     |  ✅  |   ✅   |    ✅   |     ✅      |   ⭕️   |   ✅    |     ⭕️     |
+>   gemini/gemini-flash-latest      |  ✅  |   ✅   |    ⭕️   |     ⚠️      |   ⭕️   |   ✅    |     ✅     |
 >   
 > *To investigate a specific failing request, or to view the raw JSON payloads for these permissions, run this script with `--level 1` or `--level 2`.*

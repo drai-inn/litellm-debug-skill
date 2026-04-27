@@ -26,6 +26,8 @@ In order:
 - **Onboarding by tier:** each tier needs exactly one more credential than the one below it. Tier tests act as the gate.
 - **Multi-version:** two pinned slots, `primary` and `comparison`. Both default to latest stable; override via `LITELLM_VERSION_PRIMARY` / `LITELLM_VERSION_COMPARISON`.
 - **Targeted Testing:** Filter inference tests via `LITELLM_TEST_MODEL` (`all`, `first`, or specific model ID) and `LITELLM_TEST_CAPABILITIES` (e.g., `text,roundtrip`).
+- **Supported Capabilities:** The skill tests 7 distinct inference gateway dimensions: Standard Text, Tools (Function Calling), Vision (Media), Round-Trip (Multi-turn conversations), Embeddings (`/v1/embeddings`), Streaming (SSE), and JSON Mode.
+- **Investigative Discovery:** When encountering failures, refer to `playbooks/investigate_bug.md` to perform deep codebase and documentation searches against the local source clone to differentiate between configuration issues and upstream bugs.
 
 ## Conventions
 
