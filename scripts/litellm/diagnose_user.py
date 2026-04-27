@@ -40,6 +40,8 @@ ENDPOINTS = {name: path for cat in CATEGORIES.values() for name, path in cat.ite
 
 def check_inference(base_url, user_key, results):
     test_model_env = os.getenv("LITELLM_TEST_MODEL", "first")
+    test_caps_env = os.getenv("LITELLM_TEST_CAPABILITIES", "all").lower()
+    
     models_to_test = []
     
     if test_model_env not in ("all", "first"):
@@ -62,11 +64,20 @@ def check_inference(base_url, user_key, results):
     if not models_to_test:
         return
         
+    caps_to_test = ["text", "tools", "vision", "roundtrip"]
+    if test_caps_env != "all":
+        requested_caps = [c.strip().lower() for c in test_caps_env.split(",") if c.strip()]
+        caps_to_test = [c for c in caps_to_test if c in requested_caps]
+        
     headers = {"Authorization": f"Bearer {user_key}", "Content-Type": "application/json"}
     
     results["inference"] = {}
+    results["inference_caps_tested"] = caps_to_test
     
-    print("Testing inference capabilities across models...", file=sys.stderr)
+    if not caps_to_test:
+        return
+
+    print(f"Testing inference capabilities {caps_to_test} across models...", file=sys.stderr)
     
     # Pre-populate the results structure
     for test_model in models_to_test:
@@ -101,25 +112,29 @@ def check_inference(base_url, user_key, results):
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = []
         for test_model in models_to_test:
-            payloads = {
-                "text": {
+            payloads = {}
+            if "text" in caps_to_test:
+                payloads["text"] = {
                     "model": test_model,
                     "messages": [{"role": "user", "content": "Hello, this is a diagnostic test. Please reply with 'OK'."}],
                     "max_tokens": 10
-                },
-                "tools": {
+                }
+            if "tools" in caps_to_test:
+                payloads["tools"] = {
                     "model": test_model,
                     "messages": [{"role": "user", "content": "What is the weather in London?"}],
                     "tools": [{"type": "function", "function": {"name": "get_weather", "description": "Get current weather", "parameters": {"type": "object", "properties": {"location": {"type": "string"}}, "required": ["location"]}}}],
                     "tool_choice": "auto",
                     "max_tokens": 20
-                },
-                "vision": {
+                }
+            if "vision" in caps_to_test:
+                payloads["vision"] = {
                     "model": test_model,
                     "messages": [{"role": "user", "content": [{"type": "text", "text": "What is in this image?"}, {"type": "image_url", "image_url": {"url": "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png"}}]}],
                     "max_tokens": 10
-                },
-                "roundtrip": {
+                }
+            if "roundtrip" in caps_to_test:
+                payloads["roundtrip"] = {
                     "model": test_model,
                     "messages": [
                         {"role": "user", "content": "What is the weather in London?"},
@@ -128,10 +143,10 @@ def check_inference(base_url, user_key, results):
                     ],
                     "max_tokens": 20
                 }
-            }
             
             for name, payload in payloads.items():
-                futures.append(executor.submit(test_single_capability, test_model, name, payload))
+                if name in caps_to_test:
+                    futures.append(executor.submit(test_single_capability, test_model, name, payload))
                 
         for future in concurrent.futures.as_completed(futures):
             test_model, name, res = future.result()
@@ -247,6 +262,8 @@ def get_level_0_summary(results):
     if "inference" not in results or not results["inference"]:
         print("  ⚠️ Skipped:      No test model available.")
     else:
+        caps_tested = results.get("inference_caps_tested", ["text", "tools", "vision", "roundtrip"])
+        
         # Helper to format capability status
         def format_cap(res):
             if not res: return " ➖ "
@@ -257,17 +274,36 @@ def get_level_0_summary(results):
             else:
                 return " ❌ "
                 
-        print("  Model                           | Text | Tools | Vision | Round-Trip |")
-        print("  --------------------------------+------+-------+--------+------------|")
+        # Build dynamic header based on tested caps
+        headers = ["Model                           "]
+        if "text" in caps_tested: headers.append(" Text ")
+        if "tools" in caps_tested: headers.append(" Tools ")
+        if "vision" in caps_tested: headers.append(" Vision ")
+        if "roundtrip" in caps_tested: headers.append(" Round-Trip ")
+        
+        header_row = "  " + "|".join(headers) + "|"
+        divider_row = "  " + "+".join(["-" * len(h) for h in headers]) + "|"
+        
+        print(header_row)
+        print(divider_row)
+        
         for test_model, caps in results["inference"].items():
-            t_text = format_cap(caps.get("text"))
-            t_tools = format_cap(caps.get("tools"))
-            t_vis = format_cap(caps.get("vision"))
-            t_rt = format_cap(caps.get("roundtrip"))
+            row_cols = []
             
             # Truncate model name if too long
             disp_model = test_model[:29] + ("…" if len(test_model) > 30 else " " * (31 - len(test_model)))
-            print(f"  {disp_model} | {t_text} | {t_tools}  | {t_vis}   | {t_rt}       |")
+            row_cols.append(f"{disp_model} ")
+            
+            if "text" in caps_tested: 
+                row_cols.append(f" {format_cap(caps.get('text'))} ")
+            if "tools" in caps_tested: 
+                row_cols.append(f"  {format_cap(caps.get('tools'))}  ")
+            if "vision" in caps_tested: 
+                row_cols.append(f"   {format_cap(caps.get('vision'))}  ")
+            if "roundtrip" in caps_tested: 
+                row_cols.append(f"    {format_cap(caps.get('roundtrip'))}     ")
+            
+            print("  " + "|".join(row_cols) + "|")
 
     print("\n" + "─"*59)
     print("💡 Next Step: To view the raw JSON payloads containing your")
