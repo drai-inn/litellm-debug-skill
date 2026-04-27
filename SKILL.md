@@ -4,9 +4,9 @@ description: Investigates and debugs LiteLLM proxy deployments across Public, Us
 ---
 # LiteLLM Debug Skill
 
-Project guidance for Claude Code sessions in this repo.
+Project guidance for AI agents interacting with this repository.
 
-This is a Claude Code skill for debugging LiteLLM proxy deployments fronting agentic AI workloads. Read-side and investigative.
+This project implements the [Agent Skills](https://agentskills.io/) open format. It is a skill for debugging LiteLLM proxy deployments fronting agentic AI workloads. Read-side and investigative.
 
 ## Read first
 

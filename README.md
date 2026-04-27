@@ -1,7 +1,9 @@
 # litellm-debug
 
-A Claude Code skill for debugging LiteLLM proxy deployments fronting
+An [Agent Skill](https://agentskills.io/) for debugging LiteLLM proxy deployments fronting
 agentic AI workloads. Read-side and investigative.
+
+This repository implements the open Agent Skills standard. The `SKILL.md` file at the root acts as the entry point and instructions for AI agents (like Claude Code) when they interact with this repository.
 
 ## Quickstart — Public tier (no LiteLLM credentials required)
 
