@@ -40,6 +40,9 @@ The User tier diagnostic tool groups endpoints into the following logical sets:
     2.  **Tool Calling / Functions:** Submitting a payload with `tools` defined and forcing a `tool_choice` to ensure the proxy's parsers (and the upstream provider) properly handle structured schema requests without throwing 400 Bad Request errors.
     3.  **Vision / Media:** Submitting a multi-modal payload containing an `image_url` to verify the proxy correctly proxies or translates rich media requests for the given provider.
     4.  **Round-Trip / Multi-Turn:** Submitting a conversation that has previous `assistant` responses and requires retaining context. This verifies the proxy doesn't corrupt message history from turn to turn.
+    5.  **Embeddings:** Submitting a payload to `/v1/embeddings` to verify vectorization support (critical for RAG workflows).
+    6.  **Streaming:** Submitting a payload with `stream: true` to verify Server-Sent Events (SSE) stream back cleanly.
+    7.  **JSON Mode:** Submitting a payload with `response_format: {"type": "json_object"}` to verify structured output forcing.
 *   **Model Selection:** Inference costs money and requires specific upstream capabilities. The target models are configured via the `LITELLM_TEST_MODEL` environment variable:
     *   `all`: Exhaustively tests the full surface on *every* model returned by `/v1/models`.
     *   `first` (or unset): Acts as a quick smoke-test using the first permitted model.
@@ -64,9 +67,9 @@ The User tier diagnostic tool groups endpoints into the following logical sets:
 >   🤖 Permitted:    14 models available via this key
 >
 > ▶ INFERENCE READINESS
->   Model                           | Text | Tools | Vision | Round-Trip |
->   --------------------------------+------+-------+--------+------------|
->   gpt-oss-20b                     |  ✅  |   ✅   |    ✅   |     ✅      |
->   gemini/gemini-flash-latest      |  ✅  |   ✅   |    ⚠️   |     ⚠️      |
+>   Model                           | Text | Tools | Vision | Round-Trip | Embed | Stream | JSON Mode |
+>   --------------------------------+------+-------+--------+------------+-------+--------+-----------|
+>   gpt-oss-20b                     |  ✅  |   ✅   |    ✅   |     ✅      |   ❌   |   ✅    |     ✅     |
+>   gemini/gemini-flash-latest      |  ✅  |   ✅   |    ⚠️   |     ⚠️      |   ❌   |   ✅    |     ✅     |
 >   
 > *To investigate a specific failing request, or to view the raw JSON payloads for these permissions, run this script with `--level 1` or `--level 2`.*
