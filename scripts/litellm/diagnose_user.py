@@ -104,7 +104,14 @@ def check_inference(base_url, user_key, results):
             # Special handling for streaming requests
             stream = payload.get("stream", False)
             with requests.post(f"{base_url}{path}", headers=headers, json=payload, timeout=20, stream=stream) as r:
-                status_symbol = "✅" if r.status_code == 200 else ("⚠️" if r.status_code in (400, 403, 404, 405, 429) else "❌")
+                if r.status_code == 200:
+                    status_symbol = "✅"
+                elif r.status_code == 429:
+                    status_symbol = "⏸️"
+                elif r.status_code in (400, 403, 404, 405):
+                    status_symbol = "⚠️"
+                else:
+                    status_symbol = "❌"
                 print(f"  [{status_symbol}] {test_model[:15]:<15} - {name}", file=sys.stderr)
                 
                 # Fetch text content appropriately depending on stream
@@ -128,7 +135,12 @@ def check_inference(base_url, user_key, results):
                     "error": None
                 }
         except Exception as e:
-            print(f"  [❌] {test_model[:15]:<15} - {name} (Error)", file=sys.stderr)
+            err_str = str(e)
+            if "timeout" in err_str.lower():
+                status_symbol = "⏳"
+            else:
+                status_symbol = "❌"
+            print(f"  [{status_symbol}] {test_model[:15]:<15} - {name} (Error)", file=sys.stderr)
             return test_model, name, {
                 "status": None,
                 "headers": {},
@@ -136,7 +148,7 @@ def check_inference(base_url, user_key, results):
                 "path": path,
                 "method": "POST",
                 "payload": payload,
-                "error": str(e)
+                "error": err_str
             }
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
@@ -339,12 +351,19 @@ def get_level_0_summary(results):
             if not res: return " ➖ "
             
             status = res.get("status")
+            error = res.get("error", "")
+            
+            if status is None and error and "timeout" in error.lower():
+                return " ⏳ "
+                
             if status == 200:
                 # If it passed but the proxy said it shouldn't have supported it, note it but it's a pass
                 if expected is False:
                     return " ✅*"
                 return " ✅ "
-            elif status in (400, 403, 404, 405, 429):
+            elif status == 429:
+                return " ⏸️ "
+            elif status in (400, 403, 404, 405):
                 # If the endpoint explicitly says it doesn't support this, 
                 # a 400 rejection is the *expected* behavior, so it's a structural pass (represented as an open circle).
                 if expected is False:

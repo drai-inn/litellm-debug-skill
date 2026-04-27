@@ -67,12 +67,17 @@ def test_inference_text(base_url, user_key, test_model):
         "messages": [{"role": "user", "content": "Hello, this is a diagnostic test. Please reply with 'OK'."}],
         "max_tokens": 10
     }
-    r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
+    try:
+        r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
+    except requests.exceptions.Timeout:
+        pytest.skip(f"Model {test_model} timed out.")
     
     if r.status_code == 404:
         pytest.skip(f"Model {test_model} not found or not mapped correctly (got 404).")
     if r.status_code == 403:
          pytest.skip(f"Key does not have budget or permission for {test_model} (got 403).")
+    if r.status_code == 429:
+         pytest.skip(f"Model {test_model} or API key hit rate limits (got 429).")
 
     assert r.status_code == 200, f"Expected 200 from text completion, got {r.status_code}. Body: {r.text[:200]}"
     assert "choices" in r.json(), "Expected 'choices' in response"
@@ -105,9 +110,12 @@ def test_inference_tools(base_url, user_key, test_model):
         "tool_choice": "auto",
         "max_tokens": 20
     }
-    r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
+    try:
+        r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
+    except requests.exceptions.Timeout:
+        pytest.skip(f"Model {test_model} timed out.")
     
-    if r.status_code in (400, 404, 403):
+    if r.status_code in (400, 403, 404, 429):
         pytest.skip(f"Model {test_model} rejected tool calling or is unavailable (got {r.status_code}).")
 
     assert r.status_code == 200, f"Expected 200 from tool completion, got {r.status_code}. Body: {r.text[:200]}"
@@ -131,9 +139,12 @@ def test_inference_vision(base_url, user_key, test_model):
         ],
         "max_tokens": 10
     }
-    r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
+    try:
+        r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
+    except requests.exceptions.Timeout:
+        pytest.skip(f"Model {test_model} timed out.")
     
-    if r.status_code in (400, 404, 403):
+    if r.status_code in (400, 403, 404, 429):
         pytest.skip(f"Model {test_model} rejected vision payload or is unavailable (got {r.status_code}).")
 
     assert r.status_code == 200, f"Expected 200 from vision completion, got {r.status_code}. Body: {r.text[:200]}"
@@ -155,9 +166,81 @@ def test_inference_roundtrip(base_url, user_key, test_model):
         ],
         "max_tokens": 20
     }
-    r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
+    try:
+        r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
+    except requests.exceptions.Timeout:
+        pytest.skip(f"Model {test_model} timed out.")
     
-    if r.status_code in (400, 404, 403):
+    if r.status_code in (400, 403, 404, 429):
         pytest.skip(f"Model {test_model} rejected multi-turn tool history or is unavailable (got {r.status_code}).")
 
     assert r.status_code == 200, f"Expected 200 from roundtrip completion, got {r.status_code}. Body: {r.text[:200]}"
+
+def test_inference_embedding(base_url, user_key, test_model):
+    """Test embedding generation via /v1/embeddings."""
+    if test_model == "__missing_model__":
+        pytest.skip("No test model available.")
+        
+    headers = {"Authorization": f"Bearer {user_key}", "Content-Type": "application/json"}
+    payload = {
+        "model": test_model,
+        "input": "good morning from litellm"
+    }
+    try:
+        r = requests.post(f"{base_url}/v1/embeddings", headers=headers, json=payload, timeout=20)
+    except requests.exceptions.Timeout:
+        pytest.skip(f"Model {test_model} timed out.")
+    
+    if r.status_code in (400, 403, 404, 405, 429):
+        pytest.skip(f"Model {test_model} rejected embedding payload or is unavailable (got {r.status_code}).")
+
+    assert r.status_code == 200, f"Expected 200 from embedding, got {r.status_code}. Body: {r.text[:200]}"
+
+def test_inference_stream(base_url, user_key, test_model):
+    """Test server-sent events streaming."""
+    if test_model == "__missing_model__":
+        pytest.skip("No test model available.")
+        
+    headers = {"Authorization": f"Bearer {user_key}", "Content-Type": "application/json"}
+    payload = {
+        "model": test_model,
+        "messages": [{"role": "user", "content": "Say hello"}],
+        "stream": True,
+        "max_tokens": 10
+    }
+    # Don't buffer the whole response so we can check if it starts quickly and has chunks
+    try:
+        with requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20, stream=True) as r:
+            if r.status_code in (400, 403, 404, 429):
+                pytest.skip(f"Model {test_model} rejected stream payload or is unavailable (got {r.status_code}).")
+
+            assert r.status_code == 200, f"Expected 200 from stream, got {r.status_code}."
+            
+            # Read the first few lines to confirm it looks like SSE
+            first_line = next(r.iter_lines(decode_unicode=True), "")
+            if first_line:
+                assert first_line.startswith("data: ") or first_line == "", f"Expected stream data, got {first_line[:50]}"
+    except requests.exceptions.Timeout:
+        pytest.skip(f"Model {test_model} timed out.")
+
+def test_inference_json_mode(base_url, user_key, test_model):
+    """Test forcing structured JSON output via response_format."""
+    if test_model == "__missing_model__":
+        pytest.skip("No test model available.")
+        
+    headers = {"Authorization": f"Bearer {user_key}", "Content-Type": "application/json"}
+    payload = {
+        "model": test_model,
+        "messages": [{"role": "user", "content": "Output JSON with key 'status' and value 'ok'."}],
+        "response_format": {"type": "json_object"},
+        "max_tokens": 15
+    }
+    try:
+        r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
+    except requests.exceptions.Timeout:
+        pytest.skip(f"Model {test_model} timed out.")
+    
+    if r.status_code in (400, 403, 404, 429):
+        pytest.skip(f"Model {test_model} rejected json_mode payload or is unavailable (got {r.status_code}).")
+
+    assert r.status_code == 200, f"Expected 200 from json_mode, got {r.status_code}. Body: {r.text[:200]}"
