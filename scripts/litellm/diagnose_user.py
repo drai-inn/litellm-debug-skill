@@ -13,6 +13,7 @@ import sys
 import argparse
 import requests
 import json
+import re
 import concurrent.futures
 from dotenv import load_dotenv
 
@@ -124,12 +125,14 @@ def check_inference(base_url, user_key, results):
             # Special handling for streaming requests
             stream = payload.get("stream", False)
             with requests.post(f"{base_url}{path}", headers=headers, json=payload, timeout=20, stream=stream) as r:
-                if r.status_code == 200:
+                if expected is False:
+                    status_symbol = "⚪"
+                elif r.status_code == 200:
                     status_symbol = "✅"
                 elif r.status_code == 429:
                     status_symbol = "⏸️"
                 elif r.status_code in (400, 403, 404, 405):
-                    status_symbol = "⚪" if expected is False else "⚠️"
+                    status_symbol = "⚠️"
                 else:
                     status_symbol = "❌"
                 print(f"  [{status_symbol}] {test_model[:15]:<15} - {name}", file=sys.stderr)
@@ -369,6 +372,9 @@ def get_level_0_summary(results):
         def format_cap(res, expected=None):
             if not res: return " ➖ "
             
+            if expected is False:
+                return " ⚪ "
+                
             status = res.get("status")
             error = res.get("error", "")
             
@@ -380,10 +386,6 @@ def get_level_0_summary(results):
             elif status == 429:
                 return " ⏸️ "
             elif status in (400, 403, 404, 405):
-                # If the endpoint explicitly says it doesn't support this, 
-                # a 400 rejection is the *expected* behavior, so it's a structural pass (represented as a light grey/white circle).
-                if expected is False:
-                    return " ⚪ "
                 return " ⚠️ "
             else:
                 return " ❌ "
@@ -429,15 +431,84 @@ def get_level_0_summary(results):
                     err_msg = text[:80].replace("\n", " ") + "..."
             
             if err_msg:
-                # format a richer error string
+                # Try to extract the inner message if it's a stringified JSON payload from a provider
+                # e.g., "litellm.RateLimitError: geminiException - {\n  \"error\": {\n    \"message\": \"You exceeded...\"
+                inner_msg = ""
+                provider_err = ""
+                
+                # Match provider exception name if present
+                provider_match = re.search(r'([a-zA-Z_]+Exception)', err_msg)
+                if provider_match:
+                    provider_err = provider_match.group(1)
+                    
+                # Look for an embedded JSON object by splitting on " - "
+                parts_dash = err_msg.split(" - ", 1)
+                if len(parts_dash) > 1:
+                    json_str_candidate = parts_dash[1].strip()
+                    
+                    # Strip leading b' or b" or just ' or "
+                    if json_str_candidate.startswith("b'") or json_str_candidate.startswith('b"'):
+                        json_str_candidate = json_str_candidate[2:]
+                    elif json_str_candidate.startswith("'") or json_str_candidate.startswith('"'):
+                        json_str_candidate = json_str_candidate[1:]
+                        
+                    # Remove trailing '. Received...' or similar LiteLLM log trails
+                    json_str_candidate = re.sub(r'\.\s*Received Model Group=.*', '', json_str_candidate, flags=re.DOTALL)
+                    
+                    if json_str_candidate.endswith("'") or json_str_candidate.endswith('"'):
+                        json_str_candidate = json_str_candidate[:-1]
+                        
+                    try:
+                        # Clean up common stringified artifacts
+                        inner_str = json_str_candidate
+                        
+                        # If there is trailing whitespace or weird characters after the closing brace, strip them
+                        close_brace_idx = inner_str.rfind('}')
+                        if close_brace_idx != -1:
+                            inner_str = inner_str[:close_brace_idx+1]
+                            
+                        # Replace unescaped literal \n (added by python str() conversion of bytes) with real newlines, 
+                        # but be careful not to break valid JSON \\n escapes.
+                        # The safest way is to use ast.literal_eval if it looks like a python repr string, 
+                        # but for now we'll just let strict=False handle control characters.
+                        try:
+                            import ast
+                            if inner_str.startswith("{") and "\\n" in inner_str:
+                                # Sometimes it's safe to just evaluate it if it's a repr
+                                inner_json = json.loads(inner_str, strict=False)
+                            else:
+                                inner_json = json.loads(inner_str, strict=False)
+                        except:
+                            # Fallback if the string contains python-style literals like \n
+                            inner_str = inner_str.replace('\\n', '\n').replace('\\"', '"')
+                            inner_json = json.loads(inner_str, strict=False)
+                        
+                        # Handle Google/Vertex/Gemini format
+                        if "error" in inner_json and isinstance(inner_json["error"], dict) and "message" in inner_json["error"]:
+                            inner_msg = inner_json["error"]["message"]
+                        # Handle OpenAI/Anthropic generic format
+                        elif "message" in inner_json:
+                            inner_msg = inner_json["message"]
+                        elif "detail" in inner_json:
+                            inner_msg = str(inner_json["detail"])
+                    except Exception as parse_e:
+                        pass
+                
+                # If we successfully extracted an inner message, use it instead of the massive litellm wrapper
+                if inner_msg:
+                    err_msg = inner_msg
+                
+                # Format a richer error string
                 parts = []
-                if err_type: parts.append(f"Type: {err_type}")
-                if err_code: parts.append(f"Code: {err_code}")
+                if err_type and str(err_type) != "None": parts.append(f"Type: {err_type}")
+                if err_code and str(err_code) != "None": parts.append(f"Code: {err_code}")
+                if provider_err: parts.append(f"Source: {provider_err}")
+                
                 prefix = f"[{', '.join(parts)}] " if parts else ""
                 full_err = f"{prefix}{err_msg}".replace("\n", " ")
                 
-                # truncate err_msg a bit for dashboard
-                full_err = full_err[:150] + ("..." if len(full_err) > 150 else "")
+                # truncate err_msg a bit for dashboard (increased to 250 for readability)
+                full_err = full_err[:250] + ("..." if len(full_err) > 250 else "")
                 error_log.append(f"    {symbol} {model} ({cap_name}): {status if status else 'Err'} - {full_err}")
         
         for test_model, caps in results["inference"].items():
@@ -512,11 +583,12 @@ def get_level_1_diagnostics(results, base_url, user_key):
     print("=== Level 1: Diagnostics ===\n")
     
     # Flatten results for unified printing
-    flat_results = {k: v for k, v in results.items() if k != "inference"}
+    flat_results = {k: v for k, v in results.items() if k not in ("inference", "inference_caps_tested")}
     if "inference" in results:
         for model, caps in results["inference"].items():
             for cap_name, data in caps.items():
-                flat_results[f"inference_{model}_{cap_name}"] = data
+                if cap_name != "_model_info":
+                    flat_results[f"inference_{model}_{cap_name}"] = data
                 
     for name, data in flat_results.items():
         print(f"Diagnostics for `{name}` ({data['path']}):")
@@ -542,11 +614,12 @@ def get_level_1_diagnostics(results, base_url, user_key):
 def get_level_2_traces(results, base_url, user_key):
     print("=== Level 2: Traces ===\n")
     
-    flat_results = {k: v for k, v in results.items() if k != "inference"}
+    flat_results = {k: v for k, v in results.items() if k not in ("inference", "inference_caps_tested")}
     if "inference" in results:
         for model, caps in results["inference"].items():
             for cap_name, data in caps.items():
-                flat_results[f"inference_{model}_{cap_name}"] = data
+                if cap_name != "_model_info":
+                    flat_results[f"inference_{model}_{cap_name}"] = data
                 
     for name, data in flat_results.items():
         if data['error']:
