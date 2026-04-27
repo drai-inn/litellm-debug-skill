@@ -49,17 +49,16 @@ skill can answer "is the proxy degraded?" end to end.
 
 ### User tier — + `LITELLM_USER_KEY`
 
-Self-scoped investigation: what one virtual key did and why.
+Self-scoped investigation: what one virtual key did and why. Answers permissions, budgets, and routing access for a specific client.
 
 Tasks:
-- `tests/litellm/user/` — `/key/info` self, `/user/info` self,
-  completion roundtrip.
-- `playbooks/user.md`.
+- `tests/litellm/user/test_user.py` — validate key identity (`/key/info`, `/user/info`), available models (`/v1/models`), and inference readiness.
+- `scripts/litellm/diagnose_user.py` — progressive disclosure diagnostic tool (Level 0 dashboard, Level 1 excerpts, Level 2 traces with curl payloads).
+- `playbooks/user.md` — investigative walkthrough and execution flow.
 
 **Required:** `LITELLM_BASE_URL` + `LITELLM_USER_KEY`.
 
-**Acceptance:** user tier tests pass; the skill can answer "did my
-last call succeed and why/why not?"
+**Acceptance:** user tier tests pass gracefully; the diagnostic script successfully parses the key's budget/limits and permitted models, and surfaces them in a clear TUI dashboard.
 
 ### Admin tier — + `LITELLM_MASTER_KEY`
 
