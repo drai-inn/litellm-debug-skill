@@ -51,7 +51,12 @@ The User tier diagnostic tool groups endpoints into the following logical sets:
     *   `all` (default): Runs text, tools, vision, and roundtrip.
     *   `<capability>`: A comma-separated list (e.g., `text,roundtrip`) to isolate specific workloads. The resulting diagnostic matrix will dynamically adapt its columns to match.
 
-    The script loads ground-truth capabilities from `/v1/model/info`. If a model explicitly rejects tools or vision with a 400 error, and the info endpoint confirms it is unsupported, it is recorded as a known capability limitation (`⭕️`) rather than a hard failure (`❌`) or a warning (`⚠️`).
+    The script degrades gracefully: 
+    * If a model explicitly rejects a feature (e.g., 400 error) and `/model/info` confirms it is unsupported, it's recorded as a known limitation (`⭕️`).
+    * If it rejects a feature unexpectedly, it's recorded as a warning (`⚠️`).
+    * If it hits a rate limit (`429`), it's recorded as a pause (`⏸️`).
+    * If the request times out, it's recorded as waiting (`⏳`).
+    * Hard errors (e.g., `500`) are failures (`❌`).
 
 ## Example Output (Level 0)
 
@@ -70,6 +75,6 @@ The User tier diagnostic tool groups endpoints into the following logical sets:
 >   Model                           | Text | Tools | Vision | Round-Trip | Embed | Stream | JSON Mode |
 >   --------------------------------+------+-------+--------+------------+-------+--------+-----------|
 >   gpt-oss-20b                     |  ✅  |   ✅   |    ✅   |     ✅      |   ⭕️   |   ✅    |     ⭕️     |
->   gemini/gemini-flash-latest      |  ✅  |   ✅   |    ⭕️   |     ⚠️      |   ⭕️   |   ✅    |     ✅     |
+>   gemini/gemini-flash-latest      |  ⏸️  |   ⏸️   |    ⭕️   |     ⏳      |   ⭕️   |   ⏸️    |     ⏸️     |
 >   
 > *To investigate a specific failing request, or to view the raw JSON payloads for these permissions, run this script with `--level 1` or `--level 2`.*

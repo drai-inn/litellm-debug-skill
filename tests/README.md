@@ -32,10 +32,13 @@ These tests validate key scoping, budget enforcement, and inference readiness ac
 | `test_user_key_info` | `/key/info` | Returns 200 (skips if 401/403 meaning endpoint restricted to admins) |
 | `test_user_info` | `/user/info` | Returns 200 (skips if 401/403) |
 | `test_models_list_with_key` | `/v1/models` | Returns 200 and lists permitted models |
-| `test_inference_text` | `/v1/chat/completions` | Standard text payload returns 200 (fails if budget exceeded) |
-| `test_inference_tools` | `/v1/chat/completions` | Tool schema payload returns 200 (skips on 400 capability error) |
-| `test_inference_vision` | `/v1/chat/completions` | Multimodal PNG payload returns 200 (skips on 400 capability error) |
-| `test_inference_roundtrip` | `/v1/chat/completions` | Conversation history with prior tool_calls returns 200 |
+| `test_inference_text` | `/v1/chat/completions` | Standard text payload returns 200 (fails if budget exceeded, skips on 429/timeout) |
+| `test_inference_tools` | `/v1/chat/completions` | Tool schema payload returns 200 (skips on 400 capability error, 429, timeout) |
+| `test_inference_vision` | `/v1/chat/completions` | Multimodal PNG payload returns 200 (skips on 400 capability error, 429, timeout) |
+| `test_inference_roundtrip` | `/v1/chat/completions` | Conversation history with prior tool_calls returns 200 (skips on 429/timeout) |
+| `test_inference_embedding` | `/v1/embeddings` | Basic text embedding payload returns 200 (skips on 400/404/405 capability error, 429, timeout) |
+| `test_inference_stream` | `/v1/chat/completions` | Streaming payload returns SSE data chunks without dropping (skips on 429/timeout) |
+| `test_inference_json_mode` | `/v1/chat/completions` | Structured output payload returns 200 (skips on 429/timeout) |
 
 *Note: You can control which models are tested during inference via the `LITELLM_TEST_MODEL` environment variable (e.g., `all`, `first`, or `model_name`).*
 
