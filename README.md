@@ -102,6 +102,7 @@ cleanly with a message naming the env var that would unlock them.
 - [dev/intent.md](dev/intent.md) — what this is and isn't.
 - [dev/roadmap.md](dev/roadmap.md) — phased plan with acceptance criteria.
 - [dev/decisions.md](dev/decisions.md) — architectural decision log.
+- [dev/practices.md](dev/practices.md) — normative development practices.
 
 ## Contributing
 

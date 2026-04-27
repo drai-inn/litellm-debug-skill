@@ -10,6 +10,7 @@ Before contributing, please read our foundational documents:
 1. `dev/intent.md` — What this skill is and isn't.
 2. `dev/roadmap.md` — Our phased approach and acceptance criteria.
 3. `dev/decisions.md` — Our architectural decisions.
+4. `dev/practices.md` — How we build day-to-day (tooling, TUI, etc).
 
 We strictly follow a **Tier Model** (Public, User, Admin, Telemetry, Database). Our goal is always to use the *lowest fidelity tier* that can answer the user's question, and we rely on **Spec Anchoring** to ensure our tests are based on reality, not guesswork.
 

@@ -14,6 +14,7 @@ In order:
 1. `dev/intent.md` — what this skill is and isn't.
 2. `dev/roadmap.md` — work plan with acceptance criteria.
 3. `dev/decisions.md` — architectural decision log; durable principles.
+4. `dev/practices.md` — normative development and tooling practices.
 
 ## Core principles
 
