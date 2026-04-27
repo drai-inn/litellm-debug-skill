@@ -55,16 +55,20 @@ This will produce a traffic-light dashboard view of your proxy's public surface 
    unlock the USER TIER.
 ```
 
-You should see six tests pass or skip gracefully:
+You should see eight tests pass or skip gracefully:
 
-| Test                       | Passes when                                  |
-|----------------------------|----------------------------------------------|
-| `test_proxy_liveliness`    | `/health/liveliness` returns 200             |
-| `test_proxy_readiness`     | `/health/readiness` returns 200 or 503       |
-| `test_models_list`         | `/v1/models` returns 200 (skips if auth-gated) |
-| `test_metrics_endpoint`    | `/metrics` returns Prometheus format (skips if 404) |
+| Test                                 | Passes when                                                |
+|--------------------------------------|------------------------------------------------------------|
+| `test_proxy_liveliness`              | `/health/liveliness` returns 200                           |
+| `test_proxy_readiness`               | `/health/readiness` returns 200 or 503                     |
+| `test_metrics_endpoint`              | `/metrics` returns Prometheus format (skips if 404)        |
+| `test_models_list`                   | `/v1/models` returns 200 (skips if auth-gated)             |
+| `test_identity_endpoints`            | SSO/OIDC config endpoints return 200 or 404                |
+| `test_ui_model_hub`                  | `/ui/model_hub/` returns 200 (skips if 404)                |
+| `test_ui_configuration_endpoints`    | Standard UI settings endpoints return 200                  |
+| `test_service_discovery_endpoints`   | Public discovery/capabilities endpoints return 200         |
 
-If `LITELLM_BASE_URL` is unset, all four skip cleanly with a message
+If `LITELLM_BASE_URL` is unset, all eight skip cleanly with a message
 telling you what to set.
 
 To unlock the next rung, add the next credential to `.env` and run the
@@ -75,7 +79,7 @@ corresponding test directory.
 Walks an investigation across five access tiers — Public, User, Admin,
 Telemetry, Database — using the least-privileged tier that can answer
 the question. Anchored to a version-pinned snapshot of the LiteLLM
-OpenAPI and schema (Phase 1, upcoming), with a local clone of LiteLLM
+OpenAPI and schema (Phase 1 completed), with a local clone of LiteLLM
 source for deeper analysis.
 
 Two version slots are tracked concurrently (`primary` and
