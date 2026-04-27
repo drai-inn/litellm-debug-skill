@@ -58,6 +58,9 @@ def test_models_list_with_key(base_url, user_key):
 
 def test_inference_text(base_url, user_key, test_model):
     """Test standard text completion to ensure basic routing and budget work."""
+    if test_model == "__missing_model__":
+        pytest.skip("No test model available.")
+        
     headers = {"Authorization": f"Bearer {user_key}", "Content-Type": "application/json"}
     payload = {
         "model": test_model,
@@ -76,6 +79,9 @@ def test_inference_text(base_url, user_key, test_model):
 
 def test_inference_tools(base_url, user_key, test_model):
     """Test tool-calling capability to ensure schema validation proxies correctly."""
+    if test_model == "__missing_model__":
+        pytest.skip("No test model available.")
+        
     headers = {"Authorization": f"Bearer {user_key}", "Content-Type": "application/json"}
     payload = {
         "model": test_model,
@@ -108,6 +114,9 @@ def test_inference_tools(base_url, user_key, test_model):
 
 def test_inference_vision(base_url, user_key, test_model):
     """Test vision capability to ensure multimedia payloads proxy correctly."""
+    if test_model == "__missing_model__":
+        pytest.skip("No test model available.")
+        
     headers = {"Authorization": f"Bearer {user_key}", "Content-Type": "application/json"}
     payload = {
         "model": test_model,
@@ -128,3 +137,27 @@ def test_inference_vision(base_url, user_key, test_model):
         pytest.skip(f"Model {test_model} rejected vision payload or is unavailable (got {r.status_code}).")
 
     assert r.status_code == 200, f"Expected 200 from vision completion, got {r.status_code}. Body: {r.text[:200]}"
+
+def test_inference_roundtrip(base_url, user_key, test_model):
+    """Test a multi-turn conversation with tool schemas to ensure message history doesn't corrupt."""
+    if test_model == "__missing_model__":
+        pytest.skip("No test model available.")
+        
+    headers = {"Authorization": f"Bearer {user_key}", "Content-Type": "application/json"}
+    
+    # Simulating a turn 2 request where the assistant previously replied with a thought or tool call
+    payload = {
+        "model": test_model,
+        "messages": [
+            {"role": "user", "content": "What is the weather in London?"},
+            {"role": "assistant", "content": "I should check the weather.", "tool_calls": [{"id": "call_123", "type": "function", "function": {"name": "get_weather", "arguments": "{\"location\": \"London\"}"}}]},
+            {"role": "tool", "tool_call_id": "call_123", "name": "get_weather", "content": "It is raining."}
+        ],
+        "max_tokens": 20
+    }
+    r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
+    
+    if r.status_code in (400, 404, 403):
+        pytest.skip(f"Model {test_model} rejected multi-turn tool history or is unavailable (got {r.status_code}).")
+
+    assert r.status_code == 200, f"Expected 200 from roundtrip completion, got {r.status_code}. Body: {r.text[:200]}"

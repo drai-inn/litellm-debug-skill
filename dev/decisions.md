@@ -171,16 +171,21 @@ When surfacing diagnostics (Level 1) or traces (Level 2), the skill parses the H
 
 ---
 
-## D009 — Inference Readiness testing via explicit capability dimensions
+## D009 — Inference Readiness testing via explicit capability dimensions and model targeting
 
 **Date:** 2026-04-27
 
-When testing inference readiness in the User Tier (`/v1/chat/completions`), the skill does not just send a single "Hello World" prompt. It categorizes inference into distinct capability dimensions: **Text**, **Tools (Function Calling)**, and **Vision (Media)**, and tests them sequentially.
+When testing inference readiness in the User Tier (`/v1/chat/completions`), the skill categorizes inference into distinct capability dimensions: **Text**, **Tools (Function Calling)**, **Vision (Media)**, and **Round-Trip (Multi-turn conversations)**, and tests them sequentially.
 
-**Why:** A proxy might successfully route a basic text prompt but fail on a tool-calling payload due to provider-specific schema translation issues (e.g., Anthropic vs. OpenAI tool formats) or fail on a vision payload due to payload size limits or parsing bugs. Debugging an agentic workload requires proving the proxy handles complex modalities correctly.
+Furthermore, the target models for these tests can be configured via `LITELLM_TEST_MODEL` to support different debugging scopes.
+
+**Why:** 
+1. **Capability Dimensions:** A proxy might successfully route a basic text prompt but fail on a tool-calling payload, fail on vision due to payload size limits, or corrupt message history during a multi-turn round-trip. Debugging agentic workloads requires proving the proxy handles all complex modalities and conversation states without corruption.
+2. **Model Targeting:** Debugging use cases vary. A developer might want to smoke-test the proxy's general health (`first`), validate an entire component pipeline across all providers (`all`), or isolate a specific failing toolchain on a specific model (`gpt-4o`).
 
 **Execution:** 
-- The user can explicitly specify the model to test via `LITELLM_TEST_MODEL`. 
-- If unset, the skill will grab the first available model from `/v1/models`. 
-- Because not all models support Tools or Vision, these tests degrade gracefully. A 400 error indicating "tools not supported" on the Vision test is captured as a capability limitation, not a core proxy failure.
+- `LITELLM_TEST_MODEL=all`: Tests every model returned by `/v1/models`.
+- `LITELLM_TEST_MODEL=first` (or unset): Tests only the first available model from the list.
+- `LITELLM_TEST_MODEL=<model_name>`: Tests only the specified model.
+- Capability tests degrade gracefully. A 400 error indicating "tools not supported" on the Vision test is captured as a capability limitation, not a core proxy failure.
 

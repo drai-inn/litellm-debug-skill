@@ -38,68 +38,86 @@ CATEGORIES = {
 ENDPOINTS = {name: path for cat in CATEGORIES.values() for name, path in cat.items()}
 
 def check_inference(base_url, user_key, results):
-    test_model = os.getenv("LITELLM_TEST_MODEL")
-    if not test_model:
-        # Fallback to first available model
+    test_model_env = os.getenv("LITELLM_TEST_MODEL", "first")
+    models_to_test = []
+    
+    if test_model_env not in ("all", "first"):
+        models_to_test = [m.strip() for m in test_model_env.split(",") if m.strip()]
+    else:
+        # Fallback to fetch from /v1/models
         models_data = results.get("models", {})
         if models_data.get("status") == 200:
             try:
                 parsed = json.loads(models_data["text"])
                 models = parsed.get("data", [])
                 if models:
-                    test_model = models[0].get("id")
+                    if test_model_env == "first":
+                        models_to_test = [models[0].get("id")]
+                    elif test_model_env == "all":
+                        models_to_test = [m.get("id") for m in models]
             except:
                 pass
                 
-    if not test_model:
+    if not models_to_test:
         return
         
     headers = {"Authorization": f"Bearer {user_key}", "Content-Type": "application/json"}
     
-    payloads = {
-        "inference_text": {
-            "model": test_model,
-            "messages": [{"role": "user", "content": "Hello, this is a diagnostic test. Please reply with 'OK'."}],
-            "max_tokens": 10
-        },
-        "inference_tools": {
-            "model": test_model,
-            "messages": [{"role": "user", "content": "What is the weather in London?"}],
-            "tools": [{"type": "function", "function": {"name": "get_weather", "description": "Get current weather", "parameters": {"type": "object", "properties": {"location": {"type": "string"}}, "required": ["location"]}}}],
-            "tool_choice": "auto",
-            "max_tokens": 20
-        },
-        "inference_vision": {
-            "model": test_model,
-            "messages": [{"role": "user", "content": [{"type": "text", "text": "What is in this image?"}, {"type": "image_url", "image_url": {"url": "https://upload.wikimedia.org/wikipedia/commons/a/a7/React-icon.svg"}}]}],
-            "max_tokens": 10
-        }
-    }
+    results["inference"] = {}
     
-    for name, payload in payloads.items():
-        try:
-            r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
-            results[name] = {
-                "status": r.status_code,
-                "headers": dict(r.headers),
-                "text": r.text,
-                "path": "/v1/chat/completions",
-                "method": "POST",
-                "payload": payload,
-                "error": None,
-                "model_tested": test_model
+    for test_model in models_to_test:
+        payloads = {
+            "text": {
+                "model": test_model,
+                "messages": [{"role": "user", "content": "Hello, this is a diagnostic test. Please reply with 'OK'."}],
+                "max_tokens": 10
+            },
+            "tools": {
+                "model": test_model,
+                "messages": [{"role": "user", "content": "What is the weather in London?"}],
+                "tools": [{"type": "function", "function": {"name": "get_weather", "description": "Get current weather", "parameters": {"type": "object", "properties": {"location": {"type": "string"}}, "required": ["location"]}}}],
+                "tool_choice": "auto",
+                "max_tokens": 20
+            },
+            "vision": {
+                "model": test_model,
+                "messages": [{"role": "user", "content": [{"type": "text", "text": "What is in this image?"}, {"type": "image_url", "image_url": {"url": "https://upload.wikimedia.org/wikipedia/commons/a/a7/React-icon.svg"}}]}],
+                "max_tokens": 10
+            },
+            "roundtrip": {
+                "model": test_model,
+                "messages": [
+                    {"role": "user", "content": "What is the weather in London?"},
+                    {"role": "assistant", "content": "I should check the weather.", "tool_calls": [{"id": "call_123", "type": "function", "function": {"name": "get_weather", "arguments": "{\"location\": \"London\"}"}}]},
+                    {"role": "tool", "tool_call_id": "call_123", "name": "get_weather", "content": "It is raining."}
+                ],
+                "max_tokens": 20
             }
-        except Exception as e:
-            results[name] = {
-                "status": None,
-                "headers": {},
-                "text": "",
-                "path": "/v1/chat/completions",
-                "method": "POST",
-                "payload": payload,
-                "error": str(e),
-                "model_tested": test_model
-            }
+        }
+        
+        results["inference"][test_model] = {}
+        for name, payload in payloads.items():
+            try:
+                r = requests.post(f"{base_url}/v1/chat/completions", headers=headers, json=payload, timeout=20)
+                results["inference"][test_model][name] = {
+                    "status": r.status_code,
+                    "headers": dict(r.headers),
+                    "text": r.text,
+                    "path": "/v1/chat/completions",
+                    "method": "POST",
+                    "payload": payload,
+                    "error": None
+                }
+            except Exception as e:
+                results["inference"][test_model][name] = {
+                    "status": None,
+                    "headers": {},
+                    "text": "",
+                    "path": "/v1/chat/completions",
+                    "method": "POST",
+                    "payload": payload,
+                    "error": str(e)
+                }
 
 def check_endpoints(base_url, user_key):
     results = {}
@@ -206,25 +224,30 @@ def get_level_0_summary(results):
 
     # 3. Inference Readiness
     print("\n▶ INFERENCE READINESS")
-    if "inference_text" not in results:
+    if "inference" not in results or not results["inference"]:
         print("  ⚠️ Skipped:      No test model available.")
     else:
-        test_model = results["inference_text"]["model_tested"]
-        print(f"  🎯 Target Model: `{test_model}`")
-        
         # Helper to format capability status
-        def format_cap(key, label):
-            res = results.get(key, {})
+        def format_cap(res):
+            if not res: return " ➖ "
             if res.get("status") == 200:
-                return f"✅ {label:<7} (Pass)"
+                return " ✅ "
             elif res.get("status") in (400, 403, 404):
-                return f"⚠️ {label:<7} (Rejected/Unsupported)"
+                return " ⚠️ "
             else:
-                return f"❌ {label:<7} (Fail - {res.get('status')})"
+                return " ❌ "
                 
-        print(f"  {format_cap('inference_text', 'Text:')}")
-        print(f"  {format_cap('inference_tools', 'Tools:')}")
-        print(f"  {format_cap('inference_vision', 'Vision:')}")
+        print("  Model                           | Text | Tools | Vision | Round-Trip |")
+        print("  --------------------------------+------+-------+--------+------------|")
+        for test_model, caps in results["inference"].items():
+            t_text = format_cap(caps.get("text"))
+            t_tools = format_cap(caps.get("tools"))
+            t_vis = format_cap(caps.get("vision"))
+            t_rt = format_cap(caps.get("roundtrip"))
+            
+            # Truncate model name if too long
+            disp_model = test_model[:29] + ("…" if len(test_model) > 30 else " " * (31 - len(test_model)))
+            print(f"  {disp_model} | {t_text} | {t_tools}  | {t_vis}   | {t_rt}       |")
 
     print("\n" + "─"*59)
     print("💡 Next Step: To view the raw JSON payloads containing your")
@@ -232,8 +255,16 @@ def get_level_0_summary(results):
 
 def get_level_1_diagnostics(results, base_url, user_key):
     print("=== Level 1: Diagnostics ===\n")
-    for name, data in results.items():
-        print(f"Diagnostics for `{data['path']}`:")
+    
+    # Flatten results for unified printing
+    flat_results = {k: v for k, v in results.items() if k != "inference"}
+    if "inference" in results:
+        for model, caps in results["inference"].items():
+            for cap_name, data in caps.items():
+                flat_results[f"inference_{model}_{cap_name}"] = data
+                
+    for name, data in flat_results.items():
+        print(f"Diagnostics for `{name}` ({data['path']}):")
         if data['error']:
             print(f"  * Error: {data['error']}\n")
             continue
@@ -255,7 +286,14 @@ def get_level_1_diagnostics(results, base_url, user_key):
 
 def get_level_2_traces(results, base_url, user_key):
     print("=== Level 2: Traces ===\n")
-    for name, data in results.items():
+    
+    flat_results = {k: v for k, v in results.items() if k != "inference"}
+    if "inference" in results:
+        for model, caps in results["inference"].items():
+            for cap_name, data in caps.items():
+                flat_results[f"inference_{model}_{cap_name}"] = data
+                
+    for name, data in flat_results.items():
         if data['error']:
             continue
             

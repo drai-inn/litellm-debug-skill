@@ -39,7 +39,13 @@ The User tier diagnostic tool groups endpoints into the following logical sets:
     1.  **Standard Text:** A simple `user` message to verify basic connectivity, routing, and budget enforcement.
     2.  **Tool Calling / Functions:** Submitting a payload with `tools` defined and forcing a `tool_choice` to ensure the proxy's parsers (and the upstream provider) properly handle structured schema requests without throwing 400 Bad Request errors.
     3.  **Vision / Media:** Submitting a multi-modal payload containing an `image_url` to verify the proxy correctly proxies or translates rich media requests for the given provider.
-*   **Model Selection:** Inference costs money and requires specific upstream capabilities. The diagnostic tool will attempt to use `LITELLM_TEST_MODEL` from the `.env` file. If unset, it will pick the first model returned by `/v1/models` and attempt a basic text completion, but will gracefully skip Vision/Tools if the model rejects them.
+    4.  **Round-Trip / Multi-Turn:** Submitting a conversation that has previous `assistant` responses and requires retaining context. This verifies the proxy doesn't corrupt message history from turn to turn.
+*   **Model Selection:** Inference costs money and requires specific upstream capabilities. The target models are configured via the `LITELLM_TEST_MODEL` environment variable:
+    *   `all`: Exhaustively tests the full surface on *every* model returned by `/v1/models`.
+    *   `first` (or unset): Acts as a quick smoke-test using the first permitted model.
+    *   `<model_name>`: Isolates testing to a specific model.
+    
+    The script degrades gracefully: if a model explicitly rejects tools or vision with a 400 error, it is recorded as a capability limitation rather than a hard failure.
 
 ## Example Output (Level 0)
 

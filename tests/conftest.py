@@ -43,22 +43,32 @@ def user_key():
         )
     return key
 
-@pytest.fixture(scope="session")
-def test_model(base_url, user_key):
-    model = os.environ.get("LITELLM_TEST_MODEL")
-    if model:
-        return model
+def pytest_generate_tests(metafunc):
+    if "test_model" in metafunc.fixturenames:
+        base_url = os.environ.get("LITELLM_BASE_URL", "").rstrip("/")
+        user_key = os.environ.get("LITELLM_USER_KEY")
+        test_model_env = os.environ.get("LITELLM_TEST_MODEL", "first")
         
-    # Attempt to fetch from /v1/models as fallback
-    try:
-        headers = {"Authorization": f"Bearer {user_key}"}
-        r = requests.get(f"{base_url}/v1/models", headers=headers, timeout=5)
-        if r.status_code == 200:
-            data = r.json()
-            models = data.get("data", [])
-            if models:
-                return models[0].get("id")
-    except Exception:
-        pass
+        models_to_test = []
+        if test_model_env not in ("all", "first"):
+            # Comma-separated list or single model
+            models_to_test = [m.strip() for m in test_model_env.split(",") if m.strip()]
+        else:
+            if base_url and user_key:
+                try:
+                    r = requests.get(f"{base_url}/v1/models", headers={"Authorization": f"Bearer {user_key}"}, timeout=5)
+                    if r.status_code == 200:
+                        data = r.json().get("data", [])
+                        if data:
+                            if test_model_env == "first":
+                                models_to_test = [data[0]["id"]]
+                            elif test_model_env == "all":
+                                models_to_test = [m["id"] for m in data]
+                except Exception:
+                    pass
         
-    pytest.skip("No LITELLM_TEST_MODEL provided and could not fetch fallback from /v1/models.")
+        if not models_to_test:
+            # Dummy to ensure tests run and skip rather than fail collection
+            models_to_test = ["__missing_model__"]
+            
+        metafunc.parametrize("test_model", models_to_test)
