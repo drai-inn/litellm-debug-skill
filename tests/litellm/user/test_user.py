@@ -125,7 +125,7 @@ def test_inference_vision(base_url, user_key, test_model):
                 "role": "user",
                 "content": [
                     {"type": "text", "text": "What is in this image?"},
-                    {"type": "image_url", "image_url": {"url": "https://upload.wikimedia.org/wikipedia/commons/a/a7/React-icon.svg"}}
+                    {"type": "image_url", "image_url": {"url": "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png"}}
                 ]
             }
         ],

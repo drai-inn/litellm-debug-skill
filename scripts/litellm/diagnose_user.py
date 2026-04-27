@@ -116,7 +116,7 @@ def check_inference(base_url, user_key, results):
                 },
                 "vision": {
                     "model": test_model,
-                    "messages": [{"role": "user", "content": [{"type": "text", "text": "What is in this image?"}, {"type": "image_url", "image_url": {"url": "https://upload.wikimedia.org/wikipedia/commons/a/a7/React-icon.svg"}}]}],
+                    "messages": [{"role": "user", "content": [{"type": "text", "text": "What is in this image?"}, {"type": "image_url", "image_url": {"url": "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png"}}]}],
                     "max_tokens": 10
                 },
                 "roundtrip": {
